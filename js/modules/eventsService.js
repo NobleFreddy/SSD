@@ -1,0 +1,100 @@
+/**
+ * ============================================================================
+ * SSD.EventsService — außerschulische Veranstaltungen
+ * ============================================================================
+ * Verwaltet freiwillige Veranstaltungen (z. B. Schulfest, Sporttag, Sanitäts-
+ * dienst bei einem externen Event), die der Administrator anlegt und für die
+ * sich Schüler:innen/Azubis selbstständig eintragen. Bewusst vollständig
+ * getrennt vom regulären Dienstplan (`SSD.Scheduler`/`schedule.entries`):
+ * Veranstaltungen fließen nicht in die Fairness-/Dienststatistik ein und
+ * werden nicht automatisch verplant — reine Freiwilligen-Anmeldeliste.
+ */
+window.SSD = window.SSD || {};
+
+SSD.EventsService = (function () {
+  'use strict';
+
+  const U = SSD.Utils;
+
+  function getAll() {
+    return SSD.Store.getState().events.slice().sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')));
+  }
+
+  function getById(id) {
+    return SSD.Store.getState().events.find((e) => e.id === id) || null;
+  }
+
+  function getUpcoming() {
+    const todayIso = U.toIsoDate(U.today());
+    return getAll().filter((e) => e.date >= todayIso);
+  }
+
+  function create(data) {
+    const event = SSD.Models.createEvent(data);
+    SSD.Store.commit(`Veranstaltung "${event.title}" angelegt`, (draft) => {
+      draft.events.push(event);
+    });
+    return event;
+  }
+
+  function update(id, patch) {
+    SSD.Store.commit('Veranstaltung bearbeitet', (draft) => {
+      const event = draft.events.find((e) => e.id === id);
+      if (event) Object.assign(event, patch);
+    });
+  }
+
+  function remove(id) {
+    const event = getById(id);
+    SSD.Store.commit(`Veranstaltung "${event ? event.title : ''}" gelöscht`, (draft) => {
+      draft.events = draft.events.filter((e) => e.id !== id);
+    });
+  }
+
+  function isFull(event) {
+    return event.capacity != null && event.participantIds.length >= event.capacity;
+  }
+
+  function isSignedUp(event, personId) {
+    return event.participantIds.includes(personId);
+  }
+
+  function signUp(eventId, personId) {
+    const event = getById(eventId);
+    if (!event) throw new Error('Diese Veranstaltung existiert nicht mehr.');
+    if (isSignedUp(event, personId)) return;
+    if (isFull(event)) throw new Error('Diese Veranstaltung ist bereits ausgebucht.');
+    const person = SSD.StudentService.getById(personId);
+    SSD.Store.commit(`Für "${event.title}" angemeldet (${person ? SSD.StudentService.fullName(person) : ''})`, (draft) => {
+      const target = draft.events.find((e) => e.id === eventId);
+      if (!target) return;
+      if (target.capacity != null && target.participantIds.length >= target.capacity) throw new Error('Diese Veranstaltung ist inzwischen bereits ausgebucht.');
+      if (!target.participantIds.includes(personId)) target.participantIds.push(personId);
+    }, { trackHistory: false });
+  }
+
+  function withdraw(eventId, personId) {
+    SSD.Store.commit('Anmeldung zurückgezogen', (draft) => {
+      const target = draft.events.find((e) => e.id === eventId);
+      if (!target) return;
+      target.participantIds = target.participantIds.filter((id) => id !== personId);
+    }, { trackHistory: false });
+  }
+
+  /** Entfernt eine Person aus der Teilnehmerliste (Administrator-Aktion). */
+  function removeParticipant(eventId, personId) {
+    withdraw(eventId, personId);
+  }
+
+  function getParticipants(event) {
+    return event.participantIds
+      .map((id) => SSD.StudentService.getById(id))
+      .filter(Boolean)
+      .sort((a, b) => a.lastName.localeCompare(b.lastName));
+  }
+
+  return {
+    getAll, getById, getUpcoming, create, update, remove,
+    isFull, isSignedUp, signUp, withdraw, removeParticipant, getParticipants,
+  };
+})();

@@ -1,0 +1,113 @@
+/* ==========================================================================
+   Animations — Keyframes & wiederkehrende Übergänge
+   ========================================================================== */
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); max-height: 200px; }
+  to { opacity: 0; transform: translateX(40px); max-height: 0; }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes skeleton-wave {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@keyframes pulse-danger {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.25); }
+  50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+}
+
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+@keyframes progress-indeterminate {
+  0% { transform: translateX(-60%) scaleX(0.4); }
+  50% { transform: translateX(20%) scaleX(0.6); }
+  100% { transform: translateX(100%) scaleX(0.4); }
+}
+
+@keyframes gentle-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes draw-line {
+  from { stroke-dashoffset: var(--dash-length, 400); }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes count-fade {
+  from { opacity: 0.3; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes checkmark-pop {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* ---- Wiederverwendbare Utility-Klassen ---------------------------------- */
+.animate-rise-in { animation: rise-in var(--duration-slow) var(--ease-decelerate) both; }
+.animate-pop-in { animation: pop-in var(--duration-slow) var(--ease-decelerate) both; }
+.stagger > * { animation: rise-in var(--duration-slow) var(--ease-decelerate) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 240ms; }
+.stagger > *:nth-child(8) { animation-delay: 280ms; }
+
+/* ---- Scheduler-Ladeoverlay ------------------------------------------------ */
+.solver-overlay {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  background: var(--bg-overlay);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in var(--duration-base) var(--ease-standard) both;
+}
+.solver-card {
+  background: var(--bg-surface); border-radius: var(--radius-xl); box-shadow: var(--shadow-xl);
+  padding: var(--space-8); width: min(420px, 90vw); text-align: center;
+  animation: modal-in var(--duration-slow) var(--ease-decelerate) both;
+}
+.solver-card__orbit { position: relative; width: 84px; height: 84px; margin: 0 auto var(--space-5); }
+.solver-card__orbit .spinner--lg { position: absolute; inset: 0; margin: auto; }
+.solver-card__orbit svg { position: absolute; inset: 0; margin: auto; color: var(--color-primary); animation: gentle-float 2s ease-in-out infinite; }
+.solver-card h3 { margin-bottom: var(--space-2); }
+.solver-card p { font-size: var(--font-size-sm); }
+.solver-card__log {
+  margin-top: var(--space-5); text-align: left; background: var(--bg-sunken); border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4); font-size: var(--font-size-xs); color: var(--text-secondary);
+  max-height: 120px; overflow-y: auto; font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+.solver-card__log div { animation: count-fade var(--duration-base) var(--ease-standard) both; padding: 2px 0; }
+.solver-card__progress { margin-top: var(--space-5); }

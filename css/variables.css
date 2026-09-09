@@ -1,0 +1,201 @@
+/* ==========================================================================
+   Design Tokens (CSS Custom Properties)
+   --------------------------------------------------------------------------
+   Zentrale Design-Variablen der Anwendung. Alle Farben, Abstände, Radien,
+   Schatten und Animationsdauern werden ausschließlich hier definiert, damit
+   das Erscheinungsbild an einer einzigen Stelle angepasst werden kann
+   (z. B. Schulfarbe wechseln, Dark Mode erweitern, Abstände straffen).
+   ========================================================================== */
+
+:root {
+  /* ---- Markenfarbe (dezente Blautöne) -------------------------------- */
+  --color-primary-50:  #eef5ff;
+  --color-primary-100: #dcebff;
+  --color-primary-200: #b6d4ff;
+  --color-primary-300: #85b6ff;
+  --color-primary-400: #5090fa;
+  --color-primary-500: #2f6feb;
+  --color-primary-600: #2158c9;
+  --color-primary-700: #1b45a0;
+  --color-primary-800: #17397f;
+  --color-primary-900: #142f65;
+
+  --color-accent-500: #06b6d4;   /* Cyan-Akzent für sekundäre Hervorhebungen */
+  --color-accent-600: #0891b2;
+
+  /* ---- Statusfarben ---------------------------------------------------- */
+  --color-success-50:  #ecfdf3;
+  --color-success-500: #16a34a;
+  --color-success-600: #15803d;
+  --color-warning-50:  #fffbeb;
+  --color-warning-500: #d97706;
+  --color-warning-600: #b45309;
+  --color-danger-50:   #fef2f2;
+  --color-danger-500:  #dc2626;
+  --color-danger-600:  #b91c1c;
+  --color-pink-50:     #fdf2f8;
+  --color-pink-500:    #db2777;
+  --color-pink-600:    #be185d;
+
+  /* ---- Neutrale Grautöne (mit leichtem Blaustich) ----------------------- */
+  --color-gray-0:   #ffffff;
+  --color-gray-50:  #f7f9fc;
+  --color-gray-100: #eef2f8;
+  --color-gray-200: #e2e8f2;
+  --color-gray-300: #cbd5e3;
+  --color-gray-400: #9aabc4;
+  --color-gray-500: #71839f;
+  --color-gray-600: #526078;
+  --color-gray-700: #3c485c;
+  --color-gray-800: #26303f;
+  --color-gray-900: #161d29;
+
+  /* ---- Semantische Zuordnung: Light Theme (Standard) -------------------- */
+  --bg-app: var(--color-gray-50);
+  --bg-surface: var(--color-gray-0);
+  --bg-surface-alt: var(--color-primary-50);
+  --bg-sunken: var(--color-gray-100);
+  --bg-overlay: rgba(22, 29, 41, 0.48);
+  --bg-hover: rgba(47, 111, 235, 0.06);
+  --bg-active: rgba(47, 111, 235, 0.12);
+
+  --text-primary: var(--color-gray-900);
+  --text-secondary: var(--color-gray-600);
+  --text-tertiary: var(--color-gray-400);
+  --text-on-primary: #ffffff;
+  --text-link: var(--color-primary-600);
+
+  --border-subtle: var(--color-gray-200);
+  --border-default: var(--color-gray-300);
+  --border-strong: var(--color-gray-400);
+  --border-focus: var(--color-primary-500);
+
+  --color-primary: var(--color-primary-500);
+  --color-primary-strong: var(--color-primary-600);
+  --color-primary-soft: var(--color-primary-100);
+
+  /* Dienst-Farbcodierung (siehe Fachvorgabe) */
+  --duty-mixed-bg: var(--color-success-50);
+  --duty-mixed-border: #86e0ac;
+  --duty-mixed-text: var(--color-success-600);
+  --duty-boys-bg: var(--color-warning-50);
+  --duty-boys-border: #f7d38a;
+  --duty-boys-text: var(--color-warning-600);
+  --duty-girls-bg: var(--color-pink-50);
+  --duty-girls-border: #f5aed0;
+  --duty-girls-text: var(--color-pink-600);
+  --duty-conflict-bg: var(--color-danger-50);
+  --duty-conflict-border: #f3a8a8;
+  --duty-conflict-text: var(--color-danger-600);
+  --duty-empty-bg: var(--color-gray-50);
+  --duty-empty-border: var(--color-gray-200);
+  --duty-empty-text: var(--color-gray-400);
+
+  /* ---- Elevation / Schatten ---------------------------------------------- */
+  --shadow-xs: 0 1px 2px rgba(22, 29, 41, 0.06);
+  --shadow-sm: 0 1px 3px rgba(22, 29, 41, 0.08), 0 1px 2px rgba(22, 29, 41, 0.05);
+  --shadow-md: 0 4px 12px rgba(22, 29, 41, 0.08), 0 2px 4px rgba(22, 29, 41, 0.04);
+  --shadow-lg: 0 12px 28px rgba(22, 29, 41, 0.12), 0 4px 8px rgba(22, 29, 41, 0.06);
+  --shadow-xl: 0 24px 48px rgba(22, 29, 41, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(47, 111, 235, 0.28);
+
+  /* ---- Radien (abgerundete Elemente) -------------------------------------- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 999px;
+
+  /* ---- Abstandsskala ------------------------------------------------------ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* ---- Typografie ---------------------------------------------------------- */
+  --font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", Roboto, Helvetica, Arial, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.9375rem;
+  --font-size-md: 1.0625rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl: 1.875rem;
+  --font-size-3xl: 2.25rem;
+  --line-height-tight: 1.25;
+  --line-height-base: 1.5;
+
+  /* ---- Bewegung / Animation -------------------------------------------------- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 340ms;
+
+  /* ---- Layout ---------------------------------------------------------------- */
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 76px;
+  --topbar-height: 64px;
+  --z-dropdown: 200;
+  --z-sticky: 300;
+  --z-overlay: 400;
+  --z-modal: 500;
+  --z-toast: 600;
+  --z-tooltip: 700;
+}
+
+/* ---- Dark Mode: Umschaltung über [data-theme="dark"] auf <html> ------------- */
+:root[data-theme="dark"] {
+  --bg-app: #0f1520;
+  --bg-surface: #161d29;
+  --bg-surface-alt: #1a2436;
+  --bg-sunken: #0c111a;
+  --bg-overlay: rgba(4, 7, 12, 0.64);
+  --bg-hover: rgba(93, 148, 255, 0.08);
+  --bg-active: rgba(93, 148, 255, 0.16);
+
+  --text-primary: #eef3fb;
+  --text-secondary: #a9b7cc;
+  --text-tertiary: #6b7a92;
+  --text-on-primary: #ffffff;
+  --text-link: #7fb0ff;
+
+  --border-subtle: #232e42;
+  --border-default: #2c3a53;
+  --border-strong: #3c4d6b;
+  --border-focus: #5b93ff;
+
+  --color-primary: #5b93ff;
+  --color-primary-strong: #7fb0ff;
+  --color-primary-soft: #1c2c4d;
+
+  --duty-mixed-bg: #113023;
+  --duty-mixed-border: #1f5b3d;
+  --duty-mixed-text: #6bdb9a;
+  --duty-boys-bg: #3a2c0d;
+  --duty-boys-border: #6b4f10;
+  --duty-boys-text: #f2c463;
+  --duty-girls-bg: #3a1330;
+  --duty-girls-border: #6b1f56;
+  --duty-girls-text: #f28cc9;
+  --duty-conflict-bg: #3a1414;
+  --duty-conflict-border: #6b2323;
+  --duty-conflict-text: #f29c9c;
+  --duty-empty-bg: #131a26;
+  --duty-empty-border: #232e42;
+  --duty-empty-text: #6b7a92;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 14px 32px rgba(0, 0, 0, 0.48);
+  --shadow-xl: 0 26px 52px rgba(0, 0, 0, 0.55);
+  --shadow-focus: 0 0 0 3px rgba(91, 147, 255, 0.35);
+}

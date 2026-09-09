@@ -1,0 +1,102 @@
+/* ==========================================================================
+   View-spezifische Styles
+   ========================================================================== */
+
+/* ---- Login / Setup -------------------------------------------------------- */
+.auth-card { width: 100%; max-width: 420px; padding: var(--space-8); border-radius: var(--radius-xl); }
+.auth-card__logo { width: 76px; height: 76px; border-radius: 50%; overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-5); box-shadow: var(--shadow-md); }
+.auth-card__logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.auth-card h1 { text-align: center; font-size: var(--font-size-xl); }
+.auth-card__subtitle { text-align: center; margin-bottom: var(--space-6); }
+.auth-card .field { margin-bottom: var(--space-4); }
+.role-switch { display: flex; background: var(--bg-sunken); border-radius: var(--radius-md); padding: 4px; margin-bottom: var(--space-6); }
+.role-switch__btn { flex: 1; padding: 9px; border: none; background: transparent; border-radius: var(--radius-sm); font-weight: 700; font-size: var(--font-size-sm); color: var(--text-secondary); transition: all var(--duration-base) var(--ease-standard); }
+.role-switch__btn.is-active { background: var(--bg-surface); color: var(--color-primary-strong); box-shadow: var(--shadow-sm); }
+.auth-error { display: flex; align-items: center; gap: 8px; background: var(--color-danger-50); color: var(--color-danger-600); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; margin-bottom: var(--space-4); animation: rise-in var(--duration-base); }
+.auth-footer-note { text-align: center; margin-top: var(--space-5); font-size: var(--font-size-xs); }
+.demo-hint { background: var(--bg-surface-alt); border: 1px dashed var(--border-default); border-radius: var(--radius-md); padding: var(--space-3); font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: var(--space-4); }
+.demo-hint code { background: var(--bg-sunken); padding: 1px 6px; border-radius: 4px; font-weight: 700; }
+
+/* ---- Wochenplan-Grid (Schüler) --------------------------------------------- */
+.week-grid { display: grid; grid-template-columns: 120px repeat(5, 1fr); gap: var(--space-2); }
+.week-grid__corner { }
+.week-grid__day-head { text-align: center; font-weight: 700; font-size: var(--font-size-sm); padding: var(--space-2); }
+.week-grid__day-head .date { display: block; font-weight: 500; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.week-grid__block-label { display: flex; flex-direction: column; justify-content: center; padding: var(--space-2); font-weight: 700; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.week-grid__block-label span { display: block; font-weight: 500; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+
+@media (max-width: 760px) {
+  .week-grid { grid-template-columns: 90px repeat(5, minmax(110px,1fr)); overflow-x: auto; }
+  .week-grid-wrap { overflow-x: auto; padding-bottom: var(--space-2); }
+}
+
+/* ---- Dienstplan-Tabelle (Admin) -------------------------------------------- */
+.schedule-table-wrap { overflow-x: auto; }
+.schedule-table { width: 100%; border-collapse: separate; border-spacing: var(--space-2); min-width: 760px; }
+.schedule-table th { text-align: center; font-size: var(--font-size-sm); font-weight: 700; padding: var(--space-2); color: var(--text-secondary); }
+.schedule-table th .date { display: block; font-weight: 500; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.schedule-table td.row-label { font-weight: 700; font-size: var(--font-size-sm); color: var(--text-secondary); white-space: nowrap; padding-right: var(--space-3); }
+.schedule-table td.row-label span { display: block; font-weight: 500; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.schedule-table td { vertical-align: top; }
+
+/* ---- Wizard / Setup steps --------------------------------------------------- */
+.step-list { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-6); }
+.step-dot { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-sunken); color: var(--text-tertiary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: var(--font-size-xs); flex: none; }
+.step-dot.is-active { background: var(--color-primary); color: #fff; }
+.step-dot.is-done { background: var(--color-success-500); color: #fff; }
+.step-line { flex: 1; height: 2px; background: var(--border-subtle); }
+
+/* ---- Dashboard Welcome banner ------------------------------------------------ */
+.welcome-banner {
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  background: linear-gradient(120deg, var(--color-primary-600), var(--color-primary-400));
+  color: #fff;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-5);
+  overflow: hidden; position: relative;
+}
+.welcome-banner::after {
+  content: ""; position: absolute; right: -40px; top: -60px; width: 220px; height: 220px; border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+}
+.welcome-banner h2 { color: #fff; margin-bottom: 6px; }
+.welcome-banner p { color: rgba(255,255,255,0.85); margin: 0; }
+.welcome-banner__icon { flex: none; opacity: 0.9; }
+
+/* ---- Notice / Hinweis-Box vom Administrator ------------------------------------ */
+.notice-box { display: flex; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-warning-50); border: 1px solid #f2d59c; }
+.notice-box svg { flex: none; color: var(--color-warning-600); }
+.notice-box strong { color: var(--color-warning-600); }
+.notice-box p { color: var(--text-primary); margin: 2px 0 0; font-size: var(--font-size-sm); }
+:root[data-theme="dark"] .notice-box { border-color: #6b4f10; }
+
+/* ---- Countdown / deadline pill --------------------------------------------------- */
+.deadline-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--radius-full); background: var(--bg-surface-alt); font-size: var(--font-size-sm); font-weight: 600; color: var(--color-primary-strong); }
+.deadline-pill--locked { background: var(--bg-sunken); color: var(--text-tertiary); }
+
+/* ---- Filter bar ------------------------------------------------------------------- */
+.filter-bar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.filter-bar .search-box { flex: 1; min-width: 200px; }
+.filter-bar .select { min-width: 140px; width: auto; }
+
+/* ---- Student profile drawer content ------------------------------------------------ */
+.profile-head { display: flex; align-items: center; gap: var(--space-4); }
+.profile-head__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+/* ---- Chart containers --------------------------------------------------------------- */
+.chart-card__legend { margin-top: var(--space-3); }
+.chart-tooltip-svg text { font-family: var(--font-family); }
+
+/* ---- Kbd hint ------------------------------------------------------------------------- */
+kbd { background: var(--bg-sunken); border: 1px solid var(--border-default); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; font-size: 0.7rem; font-family: inherit; font-weight: 700; }
+
+/* ---- Command palette ------------------------------------------------------------------- */
+.command-palette { position: fixed; top: 12vh; left: 50%; transform: translateX(-50%); width: min(560px, 92vw); z-index: var(--z-modal); }
+.command-palette .input { font-size: var(--font-size-md); padding: 16px 18px; border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); }
+.command-palette__results { background: var(--bg-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); margin-top: var(--space-2); overflow: hidden; border: 1px solid var(--border-subtle); max-height: 360px; overflow-y: auto; }
+.command-palette__item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.command-palette__item.is-active { background: var(--bg-hover); }
+.command-palette__item svg { color: var(--text-tertiary); flex: none; }
+
+/* ---- Print button (screen) ------------------------------------------------------------- */
+.printable-section { }

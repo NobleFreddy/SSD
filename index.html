@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schulsanitätsdienst — Dienstplan</title>
+  <meta name="description" content="Lokale Verwaltungsanwendung zur Planung des Schulsanitätsdienstes.">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+
+  <script>
+    // Verhindert einen kurzen "Hellmodus-Blitz", falls der Benutzer bereits
+    // den Dark Mode gewählt hat (Präferenz wird lokal je Gerät gespeichert).
+    try {
+      var storedTheme = localStorage.getItem('ssd_theme_pref');
+      if (storedTheme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (err) { /* localStorage evtl. nicht verfügbar */ }
+  </script>
+
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/views.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/print.css">
+</head>
+<body>
+  <div id="app-root"></div>
+
+  <noscript>
+    <div style="padding:40px; font-family:sans-serif; max-width:560px; margin:0 auto;">
+      <h1>JavaScript wird benötigt</h1>
+      <p>Diese Anwendung zur Verwaltung des Schulsanitätsdienstes benötigt aktiviertes JavaScript, um zu funktionieren. Bitte aktivieren Sie JavaScript in Ihrem Browser.</p>
+    </div>
+  </noscript>
+
+  <!-- Kernmodule (keine Abhängigkeiten untereinander außer in dieser Reihenfolge) -->
+  <script src="js/core/utils.js" defer></script>
+  <script src="js/core/eventBus.js" defer></script>
+  <script src="js/core/models.js" defer></script>
+  <script src="js/core/storage.js" defer></script>
+  <script src="js/core/store.js" defer></script>
+
+  <!-- Benutzerverwaltung -->
+  <script src="js/auth/auth.js" defer></script>
+  <script src="js/core/demoData.js" defer></script>
+
+  <!-- Wiederverwendbare UI-Bausteine -->
+  <script src="js/ui/icons.js" defer></script>
+  <script src="js/ui/toast.js" defer></script>
+  <script src="js/ui/dialog.js" defer></script>
+  <script src="js/ui/menu.js" defer></script>
+  <script src="js/ui/tooltip.js" defer></script>
+  <script src="js/ui/shortcuts.js" defer></script>
+  <script src="js/ui/charts.js" defer></script>
+  <script src="js/ui/router.js" defer></script>
+
+  <!-- Fachmodule -->
+  <script src="js/modules/studentService.js" defer></script>
+  <script src="js/modules/calendarService.js" defer></script>
+  <script src="js/modules/settingsService.js" defer></script>
+  <script src="js/modules/scheduler.js" defer></script>
+  <script src="js/modules/statisticsService.js" defer></script>
+  <script src="js/modules/substitutionService.js" defer></script>
+  <script src="js/modules/selfServiceService.js" defer></script>
+  <script src="js/modules/eventsService.js" defer></script>
+  <script src="js/modules/importExport.js" defer></script>
+  <script src="js/ui/scheduleTable.js" defer></script>
+  <script src="js/ui/substitutionFlow.js" defer></script>
+
+  <!-- Ansichten -->
+  <script src="js/views/adminLayout.js" defer></script>
+  <script src="js/views/setupView.js" defer></script>
+  <script src="js/views/loginView.js" defer></script>
+  <script src="js/views/studentDashboardView.js" defer></script>
+  <script src="js/views/adminDashboardView.js" defer></script>
+  <script src="js/views/adminStudentsView.js" defer></script>
+  <script src="js/views/adminCalendarView.js" defer></script>
+  <script src="js/views/adminScheduleView.js" defer></script>
+  <script src="js/views/adminEventsView.js" defer></script>
+  <script src="js/views/adminStatisticsView.js" defer></script>
+  <script src="js/views/adminSettingsView.js" defer></script>
+
+  <!-- Bootstrap (muss zuletzt geladen werden) -->
+  <script src="js/app.js" defer></script>
+</body>
+</html>
