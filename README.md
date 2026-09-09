@@ -1,9 +1,12 @@
 # Schulsanitätsdienst — Dienstplan-Verwaltung
 
-Eine vollständig lokale, serverlose Webanwendung zur Planung und Verwaltung
-des Schulsanitätsdienstes: Schüler:innen tragen ihre Verfügbarkeit ein, der
-Administrator lässt per Knopfdruck einen fairen, optimierten Dienstplan
-berechnen und pflegt Stammdaten, Kalender und Einstellungen.
+Eine schlanke Webanwendung zur Planung und Verwaltung des Schulsanitäts-
+dienstes: Schüler:innen tragen ihre Verfügbarkeit ein, der Administrator
+lässt per Knopfdruck einen fairen, optimierten Dienstplan berechnen und
+pflegt Stammdaten, Kalender und Einstellungen. Der Code selbst ist reines,
+serverfreies HTML/CSS/JavaScript ohne Build-Schritt; die Daten liegen in
+einer gemeinsamen Supabase-Datenbank, damit alle Geräte/Browser denselben,
+live aktuellen Stand sehen (siehe [Datenmodell & Datenhaltung](#datenmodell--datenhaltung)).
 
 ## Inhaltsverzeichnis
 
@@ -20,32 +23,35 @@ berechnen und pflegt Stammdaten, Kalender und Einstellungen.
 
 ## Schnellstart
 
-Die Anwendung benötigt **keine Installation, keinen Server und keine
-Datenbank**. Es reicht, `index.html` im Browser zu öffnen (Doppelklick
-genügt):
+Die Anwendung benötigt **keine Installation und keinen eigenen Server** —
+es reicht, `index.html` im Browser zu öffnen (Doppelklick genügt) oder die
+Datei auf einem beliebigen statischen Webhost (z. B. GitHub Pages)
+bereitzustellen:
 
 ```
 Dienstplan/index.html
 ```
 
-Beim allerersten Start erscheint ein kurzer Einrichtungsassistent, der den
-Schulnamen sowie das erste Administrator-Konto anlegt. Optional kann dabei
-ein Satz von 18 Beispiel-Schüler:innen mit zufälliger, aber plausibler
-Verfügbarkeit geladen werden — praktisch, um den Planungsalgorithmus sofort
-auszuprobieren, ohne zuerst manuell Daten zu erfassen (Startpasswort dieser
-Demo-Konten: `willkommen`).
+Eine Internetverbindung ist nötig, da die Daten in einer gemeinsamen
+Supabase-Datenbank liegen (siehe [Datenmodell & Datenhaltung](#datenmodell--datenhaltung)).
 
-Alle Daten werden ausschließlich im `localStorage` des Browsers gespeichert
-und automatisch bei jeder Änderung aktualisiert (siehe
+Beim allerersten Start (leere Datenbank) erscheint ein kurzer Einrichtungs-
+assistent, der den Schulnamen sowie das erste Administrator-Konto anlegt.
+Optional kann dabei ein Satz von 18 Beispiel-Schüler:innen mit zufälliger,
+aber plausibler Verfügbarkeit geladen werden — praktisch, um den Planungs-
+algorithmus sofort auszuprobieren, ohne zuerst manuell Daten zu erfassen
+(Startpasswort dieser Demo-Konten: `willkommen`).
+
+Alle Änderungen werden automatisch in Echtzeit gespeichert und an alle
+anderen gerade geöffneten Browser/Geräte übertragen (siehe
 [Datenmodell & Datenhaltung](#datenmodell--datenhaltung)).
 
-### Optional: über HTTP statt `file://` testen
+### Lokale Entwicklung über HTTP
 
 Für die Entwicklung liegt ein winziger, abhängigkeitsfreier Node-Server unter
 [`tools/local-preview-server.js`](tools/local-preview-server.js) bei (kein
 `npm install` nötig). Er ist **nicht** Teil der Anwendung, sondern nur eine
-Komfort-Option, z. B. wenn mehrere Rechner im Schulnetzwerk auf dieselbe
-laufende Instanz zugreifen sollen:
+Komfort-Option zum lokalen Ausprobieren über eine `http://`-Adresse:
 
 ```bash
 node tools/local-preview-server.js
@@ -55,11 +61,10 @@ node tools/local-preview-server.js
 ## Architektur
 
 Der Code ist bewusst als reines, modulares JavaScript ohne Build-Schritt
-aufgebaut (kein npm/Bundler notwendig) — dadurch läuft die App garantiert
-in jedem modernen Browser, auch direkt von der Festplatte (`file://`), ohne
-CORS-Stolperfallen, wie sie bei ES-Modulen oder `fetch()` unter `file://`
-auftreten würden. Jede Datei registriert sich unter dem gemeinsamen
-Namensraum `window.SSD`.
+aufgebaut (kein npm/Bundler notwendig) — dadurch läuft die App in jedem
+modernen Browser, sobald sie über `http(s)://` ausgeliefert wird (lokaler
+Server, Schulnetzwerk, GitHub Pages, …). Jede Datei registriert sich unter
+dem gemeinsamen Namensraum `window.SSD`.
 
 ```
 index.html                 Einstiegspunkt, lädt alle Skripte in Reihenfolge
@@ -166,28 +171,48 @@ gesucht — der Rest des Plans bleibt unangetastet.
 ## Datenmodell & Datenhaltung
 
 Der komplette Anwendungszustand ist ein einziges JSON-Objekt
-(`js/core/models.js` → `createDefaultAppData()`), das in `localStorage`
-gehalten wird ([`js/core/storage.js`](js/core/storage.js)):
+(`js/core/models.js` → `createDefaultAppData()`):
 
 ```
 { version, school, admin, students[], specialDays[],
-  dutyBlockConfig, settings, schedule: { entries[] }, meta }
+  dutyBlockConfig, settings, schedule: { entries[] }, events[], meta }
 ```
 
-- **Automatisches Speichern:** Jede Änderung läuft über
-  `SSD.Store.commit()`, das (sofern in den Einstellungen aktiviert) sofort
-  persistiert, einen Undo/Redo-Schnappschuss anlegt und die UI per
-  Event-Bus benachrichtigt.
-- **Wichtig — kein Server/keine Datenbank bedeutet auch:** `localStorage`
-  ist strikt pro Browser/Gerät. Wenn Schüler:innen ihre Verfügbarkeit von
-  **eigenen** Geräten aus eintragen sollen, ist entweder (a) ein gemeinsam
-  genutzter Rechner (z. B. im Sanitätsraum) vorgesehen, auf dem sich jede
-  Person mit ihrem Konto anmeldet, oder (b) der JSON-Export/Import wird
-  aktiv als Austauschformat genutzt. Dies ist eine bewusste Konsequenz der
-  Vorgabe "keine Datenbank/kein Server" und in den Einstellungen unter
-  „Datenverwaltung“ jederzeit einsehbar (Speichergröße, Export-Button).
-- Regelmäßige JSON-Exports als Backup werden empfohlen (Button unter
-  *Einstellungen → Datenverwaltung*).
+Dieses Objekt liegt vollständig in **einer Zeile einer Supabase-Tabelle**
+(`ssd_dienstplan_state`, Spalte `data`, siehe
+[`js/core/storage.js`](js/core/storage.js)) — es gibt bewusst kein
+relationales Schema und kein eigenes Backend: Der Browser spricht direkt
+(über den öffentlichen "anon"-Schlüssel, siehe
+[`js/core/supabaseConfig.js`](js/core/supabaseConfig.js)) mit Supabase, genau
+wie er zuvor direkt mit `localStorage` gesprochen hat. Das hält die gesamte
+Fachlogik (Planungsalgorithmus, Vertretungsmodus, Statistik, …) unverändert
+einfach: Sie arbeitet weiterhin auf einem gewöhnlichen In-Memory-JavaScript-
+Objekt, nicht auf einzelnen Datenbank-Zeilen.
+
+- **Automatisches Speichern:** Jede Änderung läuft über `SSD.Store.commit()`,
+  das (sofern in den Einstellungen aktiviert) die Änderung sofort im
+  Hintergrund nach Supabase überträgt, einen lokalen Undo/Redo-Schnappschuss
+  anlegt und die UI per Event-Bus benachrichtigt.
+- **Alle Geräte sehen dieselben Daten:** Anders als bei einer reinen
+  `localStorage`-Lösung ist der Datenstand nicht mehr an einen einzelnen
+  Browser gebunden. Über Supabase Realtime werden Änderungen einer Person
+  automatisch an alle anderen gerade geöffneten Sitzungen übertragen, ohne
+  dass ein manueller Reload nötig wäre.
+- **Nebenläufigkeit:** Speichern nutzt eine optimistische Versionsprüfung
+  (Spalte `version`) — speichert eine Person, während eine andere
+  zwischenzeitlich bereits gespeichert hat, wird die fremde Änderung nicht
+  stillschweigend überschrieben; stattdessen erscheint ein Hinweis, die Seite
+  neu zu laden. Für die kleine Nutzerzahl eines Schulteams ist das ein
+  angemessener Kompromiss gegenüber einer vollständigen Operational-
+  Transform-/CRDT-Lösung.
+- **Sicherheit des Zugriffs:** Die Datenbankzeile ist per Row-Level-Security
+  auf Lesen/Aktualisieren beschränkt (kein Anlegen/Löschen über den Client).
+  Der inhaltliche Zugriffsschutz (wer sich anmelden und was sehen darf)
+  erfolgt weiterhin über den Login-Bildschirm der Anwendung selbst — siehe
+  [Sicherheit — bitte lesen](#sicherheit--bitte-lesen).
+- Regelmäßige JSON-Exports als Backup werden weiterhin empfohlen (Button
+  unter *Einstellungen → Datenverwaltung*), z. B. um einen Stand vor einer
+  größeren Umstellung zu sichern.
 
 ## Rollen & Rechte
 
@@ -214,21 +239,36 @@ Benutzername als Startpasswort vergeben.
 
 ## Bereitstellung im Schulnetzwerk
 
-Die App kann unverändert auf jedem beliebigen statischen Webserver
+Die App kann unverändert auf jedem beliebigen statischen Webhost
 (Schul-Intranet, IIS, Apache, GitHub Pages, …) abgelegt werden — es sind
-keine serverseitigen Komponenten nötig. Zu beachten ist dabei weiterhin die
-oben beschriebene `localStorage`-Eigenschaft: Jeder Browser hat seinen
-eigenen, unabhängigen Datenstand.
+keine eigenen serverseitigen Komponenten nötig, lediglich eine
+Internetverbindung zur gemeinsamen Supabase-Datenbank (siehe
+[Datenmodell & Datenhaltung](#datenmodell--datenhaltung)).
 
 ## Sicherheit — bitte lesen
 
 Passwörter werden nicht im Klartext, sondern als gesalzener SHA-256-Hash
-gespeichert (`js/auth/auth.js`, Web-Crypto-API). Das ist eine sinnvolle
-Grundabsicherung gegen versehentliches Mitlesen (z. B. in einem JSON-Export),
-**ersetzt aber keine serverseitige Zugriffskontrolle**. Für ein rein
-internes Organisationswerkzeug einer Schule ist dieses Schutzniveau
-angemessen; für sensiblere Anwendungsfälle wäre eine echte Backend-Anbindung
-erforderlich.
+gespeichert (`js/auth/auth.js`, Web-Crypto-API). Die Prüfung "wer darf sich
+anmelden und was sehen" erfolgt vollständig im Browser-JavaScript der
+Anwendung — es gibt kein eigenes Backend, das dies serverseitig
+durchsetzt. Die Supabase-Tabelle selbst ist per Row-Level-Security nur für
+Lesen/Aktualisieren freigegeben (kein Anlegen/Löschen), der dafür verwendete
+Schlüssel ist der öffentliche "anon"-Schlüssel, der bei Supabase bewusst dazu
+gedacht ist, im Client-Code zu stehen.
+
+**Praktisch bedeutet das:** Jede Person, die den Schlüssel und die
+Projekt-URL kennt (beides steht offen im ausgelieferten JavaScript, siehe
+`js/core/supabaseConfig.js`), könnte technisch versiert die Datenbank auch
+direkt über die Supabase-API ansprechen und so den Login-Bildschirm
+umgehen. Dieses Schutzniveau ist für ein internes Organisationswerkzeug
+einer Schule (Namen, Klassen, Dienstzeiten — keine besonders sensiblen
+personenbezogenen Daten) angemessen, entspricht aber weiterhin **keiner
+harten Zugriffskontrolle**. Für sensiblere Anwendungsfälle wäre eine echte
+Backend-Anbindung mit Supabase Auth und pro Nutzer:in geltenden
+Row-Level-Security-Regeln erforderlich — ein deutlich größerer Umbau, der
+bei Bedarf nachträglich ergänzt werden kann, ohne die übrige Anwendung
+umschreiben zu müssen (die Fachlogik kennt die Datenbank nicht direkt,
+sondern ausschließlich über `js/core/storage.js`).
 
 ## Erweiterbarkeit
 

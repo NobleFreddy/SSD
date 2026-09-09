@@ -160,9 +160,13 @@ SSD.Views.AdminLayout = (function () {
           class: 'btn btn--sm btn--primary', html: SSD.Icons.svg('save', { size: 14 }),
           'data-tooltip': 'Änderungen jetzt dauerhaft speichern',
         }, ['Speichern']);
-        btn.addEventListener('click', () => {
-          SSD.Store.forceSave();
-          SSD.Toast.success('Gespeichert', 'Alle Änderungen wurden gespeichert.');
+        btn.addEventListener('click', async () => {
+          // Bei Fehlschlag/Konflikt übernimmt der zentrale Hinweis in app.js
+          // (SSD.Toast auf 'storage:error'/'store:conflict') die Meldung.
+          btn.disabled = true;
+          const ok = await SSD.Store.forceSave();
+          if (ok) SSD.Toast.success('Gespeichert', 'Alle Änderungen wurden gespeichert.');
+          btn.disabled = false;
         });
         el.appendChild(btn);
       } else {

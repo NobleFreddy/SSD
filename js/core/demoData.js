@@ -82,7 +82,7 @@ SSD.DemoData = (function () {
       startDate: U.toIsoDate(examDay), endDate: U.toIsoDate(examDay),
     }));
 
-    SSD.Store.forceSave();
+    await SSD.Store.forceSave();
   }
 
   return { seed };

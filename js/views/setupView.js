@@ -87,7 +87,7 @@ SSD.Views.Setup = (function () {
     });
 
     card.appendChild(form);
-    card.appendChild(U.el('p', { class: 'auth-footer-note' }, ['Alle Daten werden ausschließlich lokal in diesem Browser gespeichert.']));
+    card.appendChild(U.el('p', { class: 'auth-footer-note' }, ['Alle Daten werden zentral gespeichert und sind für alle Geräte sofort sichtbar.']));
 
     screen.appendChild(card);
     container.appendChild(screen);

@@ -6,9 +6,10 @@
  * angelegt) und "student" (beliebig viele, vom Administrator angelegte
  * Konten). Passwörter werden nicht im Klartext gespeichert, sondern als
  * SHA-256-Hash mit individuellem Salt (Web-Crypto-API, ohne externe
- * Bibliothek). Da die App vollständig lokal läuft, ersetzt dies keine
- * serverseitige Authentifizierung — es verhindert lediglich das versehentliche
- * Klartext-Mitlesen von Passwörtern in den exportierten JSON-Dateien.
+ * Bibliothek). Die Prüfung selbst läuft im Browser-JavaScript der Anwendung,
+ * nicht auf einem eigenen Server — der Hash verhindert lediglich das
+ * versehentliche Klartext-Mitlesen von Passwörtern (z. B. in exportierten
+ * JSON-Dateien oder direkt in der Datenbank), siehe README-Sicherheitshinweis.
  */
 window.SSD = window.SSD || {};
 

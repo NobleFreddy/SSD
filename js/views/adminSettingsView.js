@@ -77,7 +77,7 @@ SSD.Views.AdminSettings = (function () {
       U.el('hr', { class: 'divider' }),
       switchRow('Gemischte Paare bevorzugen', 'Bei der Optimierung möglichst ein Mädchen und einen Jungen einteilen.', s.preferMixedGender, (val) => commit({ preferMixedGender: val }, 'Einstellung aktualisiert.')),
       switchRow('Mehrere Dienste am selben Tag erlauben', 'Standardmäßig deaktiviert, um Schüler:innen nicht zu überlasten.', s.allowSameDayDuties, (val) => commit({ allowSameDayDuties: val }, 'Einstellung aktualisiert.')),
-      switchRow('Automatisches Speichern', 'Änderungen sofort im Browser speichern (empfohlen). Bei Deaktivierung erscheint oben ein manueller Speichern-Button.', s.autoSave, (val) => commit({ autoSave: val }, 'Einstellung aktualisiert.')),
+      switchRow('Automatisches Speichern', 'Änderungen sofort für alle sichtbar speichern (empfohlen). Bei Deaktivierung erscheint oben ein manueller Speichern-Button.', s.autoSave, (val) => commit({ autoSave: val }, 'Einstellung aktualisiert.')),
       switchRow('Selbstregistrierung erlauben', 'Schüler:innen und Azubis können sich über den Login-Bildschirm selbst ein Konto anlegen. Neue Konten sind zunächst inaktiv und müssen in der Schülerverwaltung freigeschaltet werden.', s.allowSelfRegistration, (val) => commit({ allowSelfRegistration: val }, 'Einstellung aktualisiert.')),
     ]);
     card.appendChild(body);
@@ -146,10 +146,10 @@ SSD.Views.AdminSettings = (function () {
     resetBtn.addEventListener('click', async () => {
       const ok = await SSD.Dialog.confirm({
         title: 'Alle Daten löschen', danger: true, confirmLabel: 'Endgültig löschen',
-        message: 'Dies löscht alle Schüler:innen, den Dienstplan, den Kalender und alle Einstellungen unwiderruflich. Erstellen Sie vorher unbedingt ein JSON-Backup. Wirklich fortfahren?',
+        message: 'Dies löscht alle Schüler:innen, den Dienstplan, den Kalender und alle Einstellungen unwiderruflich — für alle Personen, die auf diese Datenbank zugreifen, nicht nur für diesen Browser. Erstellen Sie vorher unbedingt ein JSON-Backup. Wirklich fortfahren?',
       });
       if (ok) {
-        SSD.Storage.clearAll();
+        await SSD.Storage.clearAll();
         window.location.hash = '#/setup';
         window.location.reload();
       }
@@ -157,10 +157,10 @@ SSD.Views.AdminSettings = (function () {
 
     return U.el('div', { class: 'card' }, [
       U.el('div', { class: 'card__header' }, [
-        U.el('div', {}, [U.el('div', { class: 'card__title' }, ['Datenverwaltung']), U.el('div', { class: 'card__subtitle' }, [`Lokaler Speicher: ${usage.kb} KB`])]),
+        U.el('div', {}, [U.el('div', { class: 'card__title' }, ['Datenverwaltung']), U.el('div', { class: 'card__subtitle' }, [`Aktueller Datenumfang: ${usage.kb} KB`])]),
       ]),
       U.el('div', { class: 'card__body' }, [
-        U.el('p', {}, ['Alle Daten dieser Anwendung liegen ausschließlich lokal in diesem Browser. Exportieren Sie regelmäßig ein JSON-Backup, um Datenverlust zu vermeiden oder Daten auf einen anderen Rechner zu übertragen.']),
+        U.el('p', {}, ['Alle Daten liegen zentral in einer gemeinsamen Datenbank, damit jedes Gerät denselben, aktuellen Dienstplan sieht. Exportieren Sie trotzdem regelmäßig ein JSON-Backup, um bei Bedarf einen früheren Stand wiederherstellen zu können.']),
         U.el('div', { class: 'cluster gap-2' }, [exportBtn, importBtn, resetBtn]),
       ]),
     ]);

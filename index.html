@@ -34,6 +34,10 @@
     </div>
   </noscript>
 
+  <!-- Gemeinsame Cloud-Datenbank (Supabase) -- muss vor js/core/storage.js geladen sein -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+  <script src="js/core/supabaseConfig.js" defer></script>
+
   <!-- Kernmodule (keine Abhängigkeiten untereinander außer in dieser Reihenfolge) -->
   <script src="js/core/utils.js" defer></script>
   <script src="js/core/eventBus.js" defer></script>
