@@ -79,7 +79,7 @@ SSD.Views.AdminStudents = (function () {
 
     if (isEdit) {
       footerButtons.push({
-        label: 'Löschen', variant: 'danger', closeOnClick: true,
+        label: 'Löschen', variant: 'danger', closeOnClick: false,
         onClick: async () => {
           const ok = await SSD.Dialog.confirm({
             title: 'Schüler:in löschen', danger: true, confirmLabel: 'Endgültig löschen',
@@ -88,6 +88,7 @@ SSD.Views.AdminStudents = (function () {
           if (ok) {
             SSD.StudentService.remove(existing.id);
             SSD.Toast.success('Gelöscht', 'Der Schüler wurde entfernt.');
+            handle.close();
           }
         },
       });

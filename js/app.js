@@ -24,6 +24,8 @@
     SSD.Router.register('/admin/calendar', SSD.Views.AdminCalendar, ['admin']);
     SSD.Router.register('/admin/schedule', SSD.Views.AdminSchedule, ['admin']);
     SSD.Router.register('/admin/events', SSD.Views.AdminEvents, ['admin']);
+    SSD.Router.register('/admin/tasks', SSD.Views.AdminTasks, ['admin']);
+    SSD.Router.register('/admin/materials', SSD.Views.AdminMaterials, ['admin']);
     SSD.Router.register('/admin/statistics', SSD.Views.AdminStatistics, ['admin']);
     SSD.Router.register('/admin/settings', SSD.Views.AdminSettings, ['admin']);
   }

@@ -180,6 +180,52 @@ SSD.Models = (function () {
     );
   }
 
+  /**
+   * Sonstige, vom Administrator erstellte Aufgabe für Sanis/Azubis. Bewusst
+   * ein "offener Pool" ohne feste Zuweisung: sichtbar für alle aktiven
+   * Sanis/Azubis, wer sie erledigt hat, markiert sie selbst als "Erledigt"
+   * (siehe `SSD.TasksService`).
+   */
+  function createTask(overrides = {}) {
+    const now = new Date().toISOString();
+    return Object.assign(
+      {
+        id: U.generateId('task'),
+        title: '',
+        description: '',
+        dueDate: null, // 'YYYY-MM-DD' | null
+        status: 'open', // 'open' | 'done'
+        createdAt: now,
+        completedAt: null,
+        completedBy: null, // Schüler:in/Azubi-ID
+      },
+      overrides
+    );
+  }
+
+  /**
+   * Eintrag in der gemeinsamen Materialliste. Wird von Sanis/Azubis selbst
+   * angelegt; eigene, noch offene Einträge dürfen von der anlegenden Person
+   * bearbeitet/gelöscht werden, alles andere macht der Administrator (siehe
+   * `SSD.MaterialService.canEdit`).
+   */
+  function createMaterialRequest(overrides = {}) {
+    const now = new Date().toISOString();
+    return Object.assign(
+      {
+        id: U.generateId('mat'),
+        name: '',
+        quantity: '', // bewusst Text, nicht Zahl — erlaubt z. B. "2 Packungen"
+        note: '',
+        requestedBy: null, // Schüler:in/Azubi-ID
+        requestedAt: now,
+        status: 'offen', // 'offen' | 'bestellt' | 'erledigt'
+        updatedAt: now,
+      },
+      overrides
+    );
+  }
+
   /** Vollständiges, leeres Anwendungsdatenobjekt (Grundzustand vor Ersteinrichtung). */
   function createDefaultAppData() {
     const now = new Date().toISOString();
@@ -193,6 +239,8 @@ SSD.Models = (function () {
       settings: createDefaultSettings(),
       schedule: { entries: [] },
       events: [],
+      tasks: [],
+      materials: [],
       meta: { createdAt: now, lastModifiedAt: now, setupComplete: false },
     };
   }
@@ -211,6 +259,8 @@ SSD.Models = (function () {
     createDefaultSettings,
     createScheduleEntry,
     createEvent,
+    createTask,
+    createMaterialRequest,
     createDefaultAppData,
   };
 })();

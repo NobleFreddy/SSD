@@ -182,6 +182,8 @@ SSD.Storage = (function () {
     data.schedule = data.schedule || defaults.schedule;
     data.specialDays = data.specialDays || [];
     data.events = data.events || [];
+    data.tasks = data.tasks || [];
+    data.materials = data.materials || [];
     data.meta = Object.assign({}, defaults.meta, data.meta || {});
     return data;
   }

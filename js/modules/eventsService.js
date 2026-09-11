@@ -93,8 +93,51 @@ SSD.EventsService = (function () {
       .sort((a, b) => a.lastName.localeCompare(b.lastName));
   }
 
+  /** Anzahl bisheriger Anmeldungen je Person über ALLE Veranstaltungen (Grundlage für die faire Auto-Zuteilung). */
+  function getParticipationCounts() {
+    const counts = new Map();
+    getAll().forEach((e) => {
+      e.participantIds.forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
+    });
+    return counts;
+  }
+
+  /** Aktive, noch nicht angemeldete Personen für eine Veranstaltung, aufsteigend nach bisheriger Teilnahmezahl sortiert (wenigste zuerst). */
+  function getFillCandidates(eventId) {
+    const event = getById(eventId);
+    if (!event) return [];
+    const counts = getParticipationCounts();
+    return SSD.StudentService.getAll()
+      .filter((p) => p.active && !event.participantIds.includes(p.id))
+      .sort((a, b) => (counts.get(a.id) || 0) - (counts.get(b.id) || 0) || a.lastName.localeCompare(b.lastName));
+  }
+
+  /**
+   * Füllt freie Plätze einer Veranstaltung automatisch auf, bevorzugt mit
+   * Personen, die bisher an den wenigsten Veranstaltungen teilgenommen haben.
+   * Ergänzt bewusst nur die freiwillige Selbstanmeldung, ersetzt sie nicht.
+   * @returns {object[]} die tatsächlich hinzugefügten Personen
+   */
+  function autoFillParticipants(eventId, count) {
+    const event = getById(eventId);
+    if (!event) throw new Error('Diese Veranstaltung existiert nicht mehr.');
+    const room = event.capacity != null ? Math.max(0, event.capacity - event.participantIds.length) : Infinity;
+    const toAdd = getFillCandidates(eventId).slice(0, Math.max(0, Math.min(count, room)));
+    if (!toAdd.length) return [];
+
+    SSD.Store.commit(`Automatisch aufgefüllt: "${event.title}" (+${toAdd.length})`, (draft) => {
+      const target = draft.events.find((e) => e.id === eventId);
+      if (!target) return;
+      toAdd.forEach((p) => {
+        if (!target.participantIds.includes(p.id)) target.participantIds.push(p.id);
+      });
+    });
+    return toAdd;
+  }
+
   return {
     getAll, getById, getUpcoming, create, update, remove,
     isFull, isSignedUp, signUp, withdraw, removeParticipant, getParticipants,
+    getParticipationCounts, getFillCandidates, autoFillParticipants,
   };
 })();

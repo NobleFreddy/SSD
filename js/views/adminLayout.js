@@ -19,6 +19,8 @@ SSD.Views.AdminLayout = (function () {
     { key: 'calendar', path: '/admin/calendar', label: 'Kalender', icon: 'calendar' },
     { key: 'schedule', path: '/admin/schedule', label: 'Dienstplan', icon: 'schedule' },
     { key: 'events', path: '/admin/events', label: 'Veranstaltungen', icon: 'flag' },
+    { key: 'tasks', path: '/admin/tasks', label: 'Aufgaben', icon: 'check' },
+    { key: 'materials', path: '/admin/materials', label: 'Material', icon: 'box' },
     { key: 'statistics', path: '/admin/statistics', label: 'Statistik', icon: 'stats' },
     { key: 'settings', path: '/admin/settings', label: 'Einstellungen', icon: 'settings' },
   ];

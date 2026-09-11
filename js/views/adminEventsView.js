@@ -61,10 +61,10 @@ SSD.Views.AdminEvents = (function () {
     const footerButtons = [{ label: 'Abbrechen', variant: 'secondary' }];
     if (isEdit) {
       footerButtons.push({
-        label: 'Löschen', variant: 'danger',
+        label: 'Löschen', variant: 'danger', closeOnClick: false,
         onClick: async () => {
           const ok = await SSD.Dialog.confirm({ title: 'Veranstaltung löschen', danger: true, message: `"${existing.title}" inkl. aller Anmeldungen wirklich löschen?` });
-          if (ok) { SSD.EventsService.remove(existing.id); SSD.Toast.success('Gelöscht', 'Veranstaltung entfernt.'); }
+          if (ok) { SSD.EventsService.remove(existing.id); SSD.Toast.success('Gelöscht', 'Veranstaltung entfernt.'); handle.close(); }
         },
       });
     }
@@ -101,6 +101,29 @@ SSD.Views.AdminEvents = (function () {
    * ------------------------------------------------------------------- */
 
   function openParticipantsModal(event) {
+    function buildAutoFillRow(fresh) {
+      const room = fresh.capacity != null ? fresh.capacity - fresh.participantIds.length : null;
+      if (room != null && room <= 0) return null;
+      const candidates = SSD.EventsService.getFillCandidates(fresh.id);
+      if (!candidates.length) {
+        return U.el('p', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs); margin:0 0 12px;' }, ['Alle aktiven Personen sind bereits angemeldet.']);
+      }
+      const maxAddable = room != null ? Math.min(room, candidates.length) : candidates.length;
+      const countInput = U.el('input', { class: 'input', type: 'number', min: '1', max: String(maxAddable), value: String(maxAddable), style: 'width:80px;' });
+      const fillBtn = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('sparkles', { size: 14 }) }, ['Automatisch auffüllen']);
+      fillBtn.addEventListener('click', () => {
+        const count = U.clamp(Number(countInput.value) || 0, 1, maxAddable);
+        const added = SSD.EventsService.autoFillParticipants(fresh.id, count);
+        if (!added.length) { SSD.Toast.info('Nichts hinzugefügt', 'Es konnten keine passenden Personen gefunden werden.'); return; }
+        SSD.Toast.success('Aufgefüllt', `Hinzugefügt: ${added.map((p) => SSD.StudentService.fullName(p)).join(', ')}`);
+        renderBody();
+      });
+      return U.el('div', { class: 'cluster gap-2', style: 'margin-bottom:12px; padding:10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); flex-wrap:wrap;' }, [
+        U.el('span', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs); flex-basis:100%;' }, ['Bevorzugt Personen mit bisher wenig Veranstaltungs-Teilnahmen:']),
+        countInput, fillBtn,
+      ]);
+    }
+
     function renderBody() {
       const fresh = SSD.EventsService.getById(event.id);
       if (!fresh) { SSD.Dialog.close(); return; }
@@ -133,6 +156,8 @@ SSD.Views.AdminEvents = (function () {
 
       body.innerHTML = '';
       body.appendChild(U.el('p', { class: 'text-secondary', style: 'margin:0 0 12px;' }, [fillText]));
+      const autoFillRow = buildAutoFillRow(fresh);
+      if (autoFillRow) body.appendChild(autoFillRow);
       body.appendChild(list);
     }
 

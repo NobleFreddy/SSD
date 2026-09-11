@@ -270,7 +270,9 @@ SSD.Views.StudentDashboard = (function () {
       { key: 'availability', label: 'Meine Verfügbarkeit' },
       { key: 'schedule', label: 'Dienstplan (alle)' },
       { key: 'openDuties', label: 'Offene Dienste', badge: openSeatCount || null },
+      { key: 'tasks', label: 'Aufgaben', badge: SSD.TasksService.getOpen().length || null },
       { key: 'events', label: 'Veranstaltungen' },
+      { key: 'materials', label: 'Material' },
     ];
     if (SSD.StudentService.isTeamLead(student)) {
       const pendingRequests = SSD.SelfServiceService.getOpenSeats().filter((s) => s.reason === 'requested').length;
@@ -403,6 +405,155 @@ SSD.Views.StudentDashboard = (function () {
         U.el('div', { class: 'cluster gap-3', style: 'justify-content:space-between;' }, [fillBadge, actionBtn]),
       ]),
     ]);
+  }
+
+  /* ---------------------------------------------------------------------
+   * "Aufgaben": offener Pool sonstiger Aufgaben (siehe SSD.TasksService)
+   * ------------------------------------------------------------------- */
+
+  function buildTaskCard(student, task) {
+    const overdue = task.dueDate && task.dueDate < U.toIsoDate(U.today());
+    const doneBtn = U.el('button', { class: 'btn btn--primary btn--sm', html: SSD.Icons.svg('checkCircle', { size: 14 }) }, ['Erledigt']);
+    doneBtn.addEventListener('click', () => {
+      SSD.TasksService.markDone(task.id, student.id);
+      SSD.Toast.success('Danke!', `"${task.title}" wurde als erledigt markiert.`);
+      refreshAll(student);
+    });
+    return U.el('div', { class: 'card animate-rise-in' }, [
+      U.el('div', { class: 'card__header' }, [
+        U.el('div', {}, [
+          U.el('div', { class: 'card__title' }, [task.title]),
+          task.dueDate ? U.el('div', { class: 'card__subtitle' }, [`${overdue ? 'Überfällig: ' : 'Fällig: '}${U.formatDateLong(U.parseIsoDate(task.dueDate))}`]) : null,
+        ]),
+        overdue ? U.el('span', { class: 'badge badge--danger' }, ['Überfällig']) : null,
+      ]),
+      U.el('div', { class: 'card__body stack gap-3' }, [
+        task.description ? U.el('p', { style: 'margin:0;' }, [task.description]) : null,
+        U.el('div', { style: 'text-align:right;' }, [doneBtn]),
+      ]),
+    ]);
+  }
+
+  function buildTasksTab(student) {
+    const tasks = SSD.TasksService.getOpen();
+    if (!tasks.length) {
+      return U.el('div', { class: 'card animate-rise-in' }, [
+        U.el('div', { class: 'empty-state' }, [
+          U.el('span', { html: SSD.Icons.svg('check', { size: 40 }) }),
+          U.el('h3', {}, ['Aktuell keine offenen Aufgaben']),
+          U.el('p', {}, ['Sobald der Administrator eine Aufgabe anlegt, erscheint sie hier.']),
+        ]),
+      ]);
+    }
+    return U.el('div', { class: 'stack gap-4' }, tasks.map((task) => buildTaskCard(student, task)));
+  }
+
+  /* ---------------------------------------------------------------------
+   * "Material": gemeinsame Materialliste (siehe SSD.MaterialService)
+   * ------------------------------------------------------------------- */
+
+  function openMaterialRequestModal(student, existing) {
+    const isEdit = !!existing;
+    const nameInput = U.el('input', { class: 'input', value: existing?.name || '', placeholder: 'z. B. Einmalhandschuhe Größe M' });
+    const quantityInput = U.el('input', { class: 'input', value: existing?.quantity || '', placeholder: 'z. B. 2 Packungen' });
+    const noteInput = U.el('textarea', { class: 'input', rows: '2' }, [existing?.note || '']);
+    const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
+
+    const body = U.el('div', { class: 'stack gap-4' }, [
+      errorBox,
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label' }, ['Bezeichnung']), nameInput]),
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label' }, ['Menge (optional)']), quantityInput]),
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label' }, ['Notiz (optional)']), noteInput]),
+    ]);
+
+    const footerButtons = [
+      { label: 'Abbrechen', variant: 'secondary' },
+      {
+        label: isEdit ? 'Speichern' : 'Anfragen', variant: 'primary', closeOnClick: false,
+        onClick: () => {
+          errorBox.style.display = 'none';
+          if (!nameInput.value.trim()) { errorBox.textContent = 'Bitte eine Bezeichnung angeben.'; errorBox.style.display = 'flex'; return; }
+          const data = { name: nameInput.value.trim(), quantity: quantityInput.value.trim(), note: noteInput.value.trim() };
+          try {
+            if (isEdit) SSD.MaterialService.update(existing.id, data, { actingPersonId: student.id });
+            else SSD.MaterialService.create(Object.assign({ requestedBy: student.id }, data));
+            SSD.Toast.success('Gespeichert', 'Materialliste aktualisiert.');
+            handle.close();
+            refreshAll(student);
+          } catch (err) {
+            errorBox.textContent = String(err.message || err);
+            errorBox.style.display = 'flex';
+          }
+        },
+      },
+    ];
+    const handle = SSD.Dialog.open({ title: isEdit ? 'Material-Eintrag bearbeiten' : 'Material anfragen', body, wide: true, footerButtons });
+  }
+
+  function buildMaterialRow(student, item) {
+    const canEditItem = SSD.MaterialService.canEdit(student.id, item);
+    const requester = item.requestedBy ? SSD.StudentService.getById(item.requestedBy) : null;
+    const requesterLabel = item.requestedBy === student.id ? 'Von Ihnen' : (item.requestedBy ? (requester ? SSD.StudentService.fullName(requester) : '(gelöscht)') : 'Administrator');
+    const statusBadgeClass = { offen: 'badge--warning', bestellt: 'badge--primary', erledigt: 'badge--success' }[item.status] || '';
+    const statusLabel = { offen: 'Offen', bestellt: 'Bestellt', erledigt: 'Erledigt' }[item.status] || item.status;
+
+    const actions = [];
+    if (canEditItem) {
+      const editBtn = U.el('button', { class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': 'Bearbeiten', html: SSD.Icons.svg('edit', { size: 14 }) });
+      editBtn.addEventListener('click', () => openMaterialRequestModal(student, item));
+      const deleteBtn = U.el('button', { class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': 'Löschen', html: SSD.Icons.svg('trash', { size: 14 }) });
+      deleteBtn.addEventListener('click', async () => {
+        const ok = await SSD.Dialog.confirm({ title: 'Löschen', danger: true, message: `"${item.name}" wirklich löschen?` });
+        if (!ok) return;
+        try {
+          SSD.MaterialService.remove(item.id, { actingPersonId: student.id });
+          SSD.Toast.success('Gelöscht', 'Eintrag entfernt.');
+        } catch (err) {
+          SSD.Toast.error('Nicht möglich', String(err.message || err));
+        }
+        refreshAll(student);
+      });
+      actions.push(editBtn, deleteBtn);
+    }
+
+    return U.el('div', { class: 'cluster gap-3', style: 'padding:10px 4px; border-bottom:1px solid var(--border-subtle); justify-content:space-between;' }, [
+      U.el('div', {}, [
+        U.el('div', { class: 'cluster gap-2' }, [
+          U.el('strong', {}, [item.name]),
+          item.quantity ? U.el('span', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [item.quantity]) : null,
+          U.el('span', { class: `badge ${statusBadgeClass}` }, [statusLabel]),
+        ]),
+        item.note ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs); margin-top:2px;' }, [item.note]) : null,
+        U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs); margin-top:2px;' }, [requesterLabel]),
+      ]),
+      actions.length ? U.el('div', { class: 'cluster gap-1' }, actions) : null,
+    ]);
+  }
+
+  function buildMaterialsTab(student) {
+    const items = SSD.MaterialService.getAll();
+    const addBtn = U.el('button', { class: 'btn btn--primary btn--sm', html: SSD.Icons.svg('plus', { size: 14 }) }, ['Material anfragen']);
+    addBtn.addEventListener('click', () => openMaterialRequestModal(student, null));
+
+    const card = U.el('div', { class: 'card animate-rise-in' });
+    card.appendChild(U.el('div', { class: 'card__header' }, [
+      U.el('div', {}, [
+        U.el('div', { class: 'card__title' }, ['Materialliste']),
+        U.el('div', { class: 'card__subtitle' }, ['Zu bestellendes Material für den Administrator dokumentieren.']),
+      ]),
+      addBtn,
+    ]));
+    const body = U.el('div', { class: 'card__body' });
+    if (!items.length) {
+      body.appendChild(U.el('div', { class: 'empty-state' }, [
+        U.el('span', { html: SSD.Icons.svg('box', { size: 40 }) }),
+        U.el('h3', {}, ['Noch keine Material-Anfragen']),
+      ]));
+    } else {
+      body.appendChild(U.el('div', {}, items.map((item) => buildMaterialRow(student, item))));
+    }
+    card.appendChild(body);
+    return card;
   }
 
   /** "Veranstaltungen": freiwillige Anmeldung zu außerschulischen Veranstaltungen. */
@@ -545,8 +696,16 @@ SSD.Views.StudentDashboard = (function () {
       tabBody.appendChild(buildOpenDutiesTab(student));
       return;
     }
+    if (activeTab === 'tasks') {
+      tabBody.appendChild(buildTasksTab(student));
+      return;
+    }
     if (activeTab === 'events') {
       tabBody.appendChild(buildEventsTab(student));
+      return;
+    }
+    if (activeTab === 'materials') {
+      tabBody.appendChild(buildMaterialsTab(student));
       return;
     }
     if (activeTab === 'teamLead') {

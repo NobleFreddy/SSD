@@ -150,7 +150,12 @@ SSD.Scheduler = (function () {
       if (!student || !student.active) return false;
 
       const blockIdx = U.DUTY_BLOCK_KEYS.indexOf(slot.block);
-      if (student.availability[slot.weekday][blockIdx] !== 'available') return false;
+      const availState = student.availability[slot.weekday][blockIdx];
+      // "Gesperrt" (Klausur/Termin) bleibt immer hart ausgeschlossen. "Nicht
+      // verfügbar" ist normalerweise ebenfalls hart, wird aber bei der
+      // Lücken-Füllung (siehe `relaxedSettingsFrom`) bewusst zugelassen.
+      if (availState === 'blocked') return false;
+      if (availState !== 'available' && !this.settings.relaxedAvailability) return false;
 
       const maxTotal = this.settings.maxDutiesTotal;
       if (maxTotal && this.totalCount.get(studentId) >= maxTotal) return false;
@@ -477,6 +482,15 @@ SSD.Scheduler = (function () {
     return Object.assign({}, settings, { studentsPerDuty: 1 });
   }
 
+  /**
+   * Einstellungsobjekt für die Lücken-Füllung bei fehlender Verfügbarkeit:
+   * "Nicht verfügbar" wird als besetzbar behandelt — "Gesperrt" bleibt in
+   * `SchedulingContext.isEligible` unabhängig davon immer hart ausgeschlossen.
+   */
+  function relaxedSettingsFrom(settings) {
+    return Object.assign({}, settings, { relaxedAvailability: true });
+  }
+
   async function assignAzubis(entries, azubis, settings, rng, onProgress) {
     if (!azubis.length || !entries.length) return;
 
@@ -575,6 +589,86 @@ SSD.Scheduler = (function () {
     return buildSlotsForWeeks(weekMondays).length;
   }
 
+  /* ---------------------------------------------------------------------
+   * Lücken-Füllung bei fehlender Verfügbarkeit (Admin-Aktion)
+   * ------------------------------------------------------------------- */
+
+  /**
+   * Unterbesetzte Dienste im gewählten Zeitraum, die für die Lücken-Füllung
+   * infrage kommen. Ein Dienst mit einer bereits eingeteilten, aber
+   * inzwischen deaktivierten Person wird ausgeschlossen — diese ID ist kein
+   * Teil des aktiven Rosters, mit dem der `SchedulingContext` arbeitet, eine
+   * manuelle Bereinigung im "Dienst bearbeiten"-Dialog ist hier der
+   * richtige erste Schritt statt der automatischen Füllung.
+   */
+  function getUnderstaffedEntriesInRange(startMonday, weekCount) {
+    const settings = SSD.Store.getState().settings;
+    const activeIds = new Set(SSD.StudentService.getActiveByRole('student').map((s) => s.id));
+    return getExistingEntriesInRange(startMonday, weekCount).filter((e) =>
+      e.studentIds.length < settings.studentsPerDuty && e.studentIds.every((id) => activeIds.has(id))
+    );
+  }
+
+  /**
+   * Befüllt eine Liste bereits bestehender, unterbesetzter Diensteinträge
+   * unter gelockerter Verfügbarkeitsregel ("Nicht verfügbar" wird
+   * akzeptiert, "Gesperrt" bleibt immer tabu). Wird sowohl von der
+   * Sammel-Aktion (mehrere Einträge) als auch von der Einzelaktion im
+   * "Dienst bearbeiten"-Dialog (genau ein Eintrag) verwendet.
+   *
+   * Bewusst OHNE `constructGreedy`: die bestehende Besetzung wird zunächst
+   * in den Kontext vorbelegt, danach läuft nur die lokale Suche
+   * (`localSearch`) — `attemptFillMove` fügt unterbesetzten Diensten bereits
+   * genau die fairste zulässige Person hinzu, ganz ohne zweite Auswahllogik.
+   * `constructGreedy` würde dagegen von leeren Slots ausgehen und ein
+   * komplett neues Paar erzeugen, statt die bestehende Besetzung zu ergänzen.
+   *
+   * Committet nichts selbst — gibt nur die geänderten Einträge zurück, die
+   * aufrufende View entscheidet über den `SSD.Store.commit(...)`-Aufruf
+   * (gleiche Aufteilung der Zuständigkeiten wie bei `generateSchedule`).
+   *
+   * @returns {Promise<{updatedEntries: Array<{id:string, studentIds:string[]}>, filledSeatCount: number, stillUnderstaffedCount: number}>}
+   */
+  async function fillUnderstaffedSlots(targetEntries, options, onProgress) {
+    const state = SSD.Store.getState();
+    const relaxedSettings = relaxedSettingsFrom(state.settings);
+    const students = SSD.StudentService.getActiveByRole('student');
+    const activeIds = new Set(students.map((s) => s.id));
+    const rng = U.createSeededRandom((options && options.seed) || Date.now() % 1e9);
+
+    const usable = targetEntries.filter((e) =>
+      e.studentIds.length < state.settings.studentsPerDuty && e.studentIds.every((id) => activeIds.has(id))
+    );
+    if (!usable.length) return { updatedEntries: [], filledSeatCount: 0, stillUnderstaffedCount: 0 };
+
+    const slots = usable.map((e) => slotFromEntry(e));
+    const targetKeys = new Set(slots.map((s) => s.key));
+    const history = state.schedule.entries.filter((e) => !targetKeys.has(slotKey(e.date, e.block)));
+    const context = new SchedulingContext(students, history, slots, relaxedSettings);
+
+    usable.forEach((entry, i) => {
+      entry.studentIds.forEach((id) => context.assign(slots[i], id));
+    });
+
+    await localSearch(context, slots, onProgress, rng, { start: 10, end: 95 });
+
+    const updatedEntries = [];
+    let filledSeatCount = 0;
+    let stillUnderstaffedCount = 0;
+    usable.forEach((entry, i) => {
+      const ids = context.assignments.get(slots[i].key) || [];
+      const changed = ids.length !== entry.studentIds.length || ids.some((id) => !entry.studentIds.includes(id));
+      if (changed) {
+        updatedEntries.push({ id: entry.id, studentIds: ids.slice() });
+        filledSeatCount += Math.max(0, ids.length - entry.studentIds.length);
+      }
+      if (ids.length < state.settings.studentsPerDuty) stillUnderstaffedCount += 1;
+    });
+
+    onProgress && onProgress({ phase: 'done', percent: 100, message: 'Fertig!' });
+    return { updatedEntries, filledSeatCount, stillUnderstaffedCount };
+  }
+
   /**
    * Überträgt die Zuteilung einer bereits fertigen Vorlagen-Woche auf eine
    * Reihe kommender Wochen ("wiederkehrender Dienstplan"), damit nicht jede
@@ -664,6 +758,7 @@ SSD.Scheduler = (function () {
     classifyDuty,
     slotKey, pairKey, slotFromEntry,
     buildAzubiHistoryEntries, azubiSettingsFrom,
+    relaxedSettingsFrom, getUnderstaffedEntriesInRange, fillUnderstaffedSlots,
     // Für den Vertretungsmodus (SSD.SubstitutionService) wiederverwendet, damit
     // Eignungsprüfung/Zähler-Logik nicht ein zweites Mal implementiert werden muss.
     SchedulingContext,

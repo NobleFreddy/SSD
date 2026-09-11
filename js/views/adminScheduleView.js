@@ -87,6 +87,7 @@ SSD.Views.AdminSchedule = (function () {
 
   function openDutyEditModal(dateIso, weekday, block) {
     const entry = findEntry(dateIso, block);
+    const settings = SSD.SettingsService.get();
     const students = SSD.StudentService.getAll().filter((s) => (s.role || 'student') === 'student').sort((a, b) => a.lastName.localeCompare(b.lastName));
     const azubis = SSD.StudentService.getAll().filter((s) => s.role === 'azubi').sort((a, b) => a.lastName.localeCompare(b.lastName));
 
@@ -101,9 +102,16 @@ SSD.Views.AdminSchedule = (function () {
     const select2 = buildSelect(students, entry?.studentIds[1]);
     const azubiSelect = buildSelect(azubis, entry?.azubiId, '— Kein Azubi eingeteilt —');
     const warnBox = U.el('div', { class: 'stack gap-1' });
+    const hasStaleOccupant = !!entry && entry.studentIds.some((id) => {
+      const s = SSD.StudentService.getById(id);
+      return !s || !s.active;
+    });
 
     function refreshWarnings() {
       warnBox.innerHTML = '';
+      if (hasStaleOccupant) {
+        warnBox.appendChild(warningLine('Mindestens eine bereits eingeteilte Person ist inzwischen deaktiviert — bitte zunächst manuell bereinigen, bevor automatisch aufgefüllt werden kann.'));
+      }
       const ids = [select1.value, select2.value].filter(Boolean);
       if (ids.length === 2 && ids[0] === ids[1]) {
         warnBox.appendChild(warningLine('Dieselbe Person kann nicht zweimal im selben Dienst eingeteilt werden.'));
@@ -153,9 +161,27 @@ SSD.Views.AdminSchedule = (function () {
       warnBox,
     ]);
 
+    const understaffedCount = settings.studentsPerDuty - (entry ? entry.studentIds.length : 0);
+
     const footerButtons = [{ label: 'Abbrechen', variant: 'secondary' }];
     if (entry && (entry.studentIds.length || entry.azubiId)) {
       footerButtons.push({ label: 'Dienst leeren', variant: 'danger', onClick: () => commitEntry(dateIso, weekday, block, [], null) });
+    }
+    if (understaffedCount > 0 && !hasStaleOccupant) {
+      footerButtons.push({
+        label: 'Trotzdem automatisch besetzen', variant: 'secondary', closeOnClick: false,
+        html: SSD.Icons.svg('puzzle', { size: 15 }),
+        onClick: async () => {
+          const baseEntry = entry || SSD.Models.createScheduleEntry({ date: dateIso, weekday, block });
+          const result = await SSD.Scheduler.fillUnderstaffedSlots([baseEntry], {});
+          if (!result.updatedEntries.length) {
+            SSD.Toast.warning('Keine passende Person gefunden', 'Auch mit gelockerter Verfügbarkeit ist aktuell niemand zulässig (z. B. wegen Wochenlimit oder "Gesperrt"-Status).');
+            return;
+          }
+          commitEntry(dateIso, weekday, block, result.updatedEntries[0].studentIds, entry ? entry.azubiId : undefined);
+          handle.close();
+        },
+      });
     }
     footerButtons.push({
       label: 'Speichern', variant: 'primary', closeOnClick: false,
@@ -194,7 +220,9 @@ SSD.Views.AdminSchedule = (function () {
    * Generator (Solver-Overlay)
    * ------------------------------------------------------------------- */
 
-  function buildSolverOverlay() {
+  function buildSolverOverlay(opts) {
+    const title = (opts && opts.title) || 'Dienstplan wird erstellt';
+    const icon = (opts && opts.icon) || 'wand';
     const logEl = U.el('div', { class: 'solver-card__log' });
     const progressFill = U.el('div', { class: 'progress-bar__fill', style: 'width:4%' });
     const messageEl = U.el('p', {}, ['Initialisiere …']);
@@ -202,9 +230,9 @@ SSD.Views.AdminSchedule = (function () {
       U.el('div', { class: 'solver-card' }, [
         U.el('div', { class: 'solver-card__orbit' }, [
           U.el('div', { class: 'spinner spinner--lg' }),
-          U.el('span', { html: SSD.Icons.svg('wand', { size: 30 }) }),
+          U.el('span', { html: SSD.Icons.svg(icon, { size: 30 }) }),
         ]),
-        U.el('h3', {}, ['Dienstplan wird erstellt']),
+        U.el('h3', {}, [title]),
         messageEl,
         U.el('div', { class: 'solver-card__progress' }, [U.el('div', { class: 'progress-bar' }, [progressFill])]),
         logEl,
@@ -301,6 +329,94 @@ SSD.Views.AdminSchedule = (function () {
         {
           label: 'Erstellen', variant: 'primary', html: SSD.Icons.svg('wand', { size: 15 }),
           onClick: () => runGeneration(U.parseIsoDate(startInput.value), Number(weekCountInput.value)),
+        },
+      ],
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+   * Lücken auffüllen (trotz fehlender Verfügbarkeit)
+   * ------------------------------------------------------------------- */
+
+  async function runFillGaps(monday, weeks) {
+    const targets = SSD.Scheduler.getUnderstaffedEntriesInRange(monday, weeks);
+    if (!targets.length) {
+      SSD.Toast.info('Keine Lücken gefunden', 'Im gewählten Zeitraum sind alle Dienste bereits vollständig besetzt (oder eine bestehende Besetzung ist inzwischen deaktiviert und muss erst manuell bereinigt werden).');
+      return;
+    }
+
+    const overlay = buildSolverOverlay({ title: 'Lücken werden aufgefüllt', icon: 'puzzle' });
+    document.body.appendChild(overlay.el);
+    const minDurationPromise = new Promise((resolve) => setTimeout(resolve, 600));
+
+    try {
+      const result = await SSD.Scheduler.fillUnderstaffedSlots(targets, {}, overlay.update);
+      await minDurationPromise;
+
+      if (!result.updatedEntries.length) {
+        SSD.Toast.warning('Keine Änderung möglich', 'Für die gefundenen Lücken ist aktuell niemand zulässig — auch nicht mit gelockerter Verfügbarkeit (z. B. wegen Wochenlimit oder "Gesperrt"-Status).');
+        return;
+      }
+
+      SSD.Store.commit(`Lücken aufgefüllt (${U.formatDateMedium(monday)}, ${weeks} Woche(n))`, (draft) => {
+        result.updatedEntries.forEach((u) => {
+          const target = draft.schedule.entries.find((e) => e.id === u.id);
+          if (target) { target.studentIds = u.studentIds; target.isManual = true; }
+        });
+      });
+
+      renderContent();
+      if (result.stillUnderstaffedCount > 0) {
+        SSD.Toast.warning('Teilweise aufgefüllt', `${result.filledSeatCount} Platz/Plätze besetzt · ${result.stillUnderstaffedCount} Dienst(e) bleiben trotzdem unbesetzt (keine zulässige Person gefunden).`);
+      } else {
+        SSD.Toast.success('Lücken aufgefüllt', `${result.filledSeatCount} Platz/Plätze wurden besetzt.`);
+      }
+    } catch (err) {
+      console.error(err);
+      SSD.Toast.error('Fehler beim Auffüllen', String(err.message || err));
+    } finally {
+      overlay.close();
+    }
+  }
+
+  function openFillGapsModal() {
+    const startInput = U.el('input', { class: 'input', type: 'date', value: U.toIsoDate(viewedMonday) });
+    const weekCountInput = U.el('input', { class: 'input', type: 'number', min: '1', max: '8', value: '1' });
+    const previewText = U.el('p', { class: 'text-secondary' });
+
+    function refresh() {
+      const raw = U.parseIsoDate(startInput.value || U.toIsoDate(viewedMonday));
+      const monday = U.getMondayOfWeek(raw);
+      startInput.value = U.toIsoDate(monday);
+      const weeks = U.clamp(Number(weekCountInput.value) || 1, 1, 8);
+      weekCountInput.value = String(weeks);
+
+      const gaps = SSD.Scheduler.getUnderstaffedEntriesInRange(monday, weeks);
+      const rangeLabel = `${U.formatDateMedium(monday)} – ${U.formatDateMedium(U.addDays(monday, weeks * 7 - 1))}`;
+      previewText.textContent = gaps.length
+        ? `${gaps.length} unbesetzte(r)/unvollständige(r) Dienst(e) im Zeitraum ${rangeLabel} gefunden.`
+        : `Im Zeitraum ${rangeLabel} sind aktuell keine Lücken vorhanden.`;
+    }
+    startInput.addEventListener('change', refresh);
+    weekCountInput.addEventListener('change', refresh);
+    refresh();
+
+    const body = U.el('div', { class: 'stack gap-4' }, [
+      U.el('p', {}, ['Besetzt unbesetzte oder unvollständige Dienste im gewählten Zeitraum trotzdem: "Nicht verfügbar" zählt hierbei ausnahmsweise als besetzbar. Als "Gesperrt" markierte Zeiten (Klausur, Termin, …) werden weiterhin nie verwendet, ebenso alle anderen Regeln (Wochenlimit, Pausen, keine Doppelbelegung).']),
+      U.el('div', { class: 'grid grid-cols-2' }, [
+        field('Startwoche (Montag)', startInput),
+        field('Anzahl Wochen', weekCountInput),
+      ]),
+      previewText,
+    ]);
+
+    SSD.Dialog.open({
+      title: 'Lücken auffüllen', body,
+      footerButtons: [
+        { label: 'Abbrechen', variant: 'secondary' },
+        {
+          label: 'Auffüllen', variant: 'primary', html: SSD.Icons.svg('puzzle', { size: 15 }),
+          onClick: () => runFillGaps(U.getMondayOfWeek(U.parseIsoDate(startInput.value)), Number(weekCountInput.value)),
         },
       ],
     });
@@ -418,6 +534,9 @@ SSD.Views.AdminSchedule = (function () {
     const transferBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('refresh', { size: 16 }), 'data-tooltip': 'Angezeigte Woche als Vorlage auf kommende Wochen übertragen' }, ['Auf Folgewochen übertragen']);
     transferBtn.addEventListener('click', () => openTransferModal());
 
+    const fillGapsBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('puzzle', { size: 16 }), 'data-tooltip': 'Unbesetzte Dienste trotz fehlender Verfügbarkeit befüllen' }, ['Lücken auffüllen']);
+    fillGapsBtn.addEventListener('click', () => openFillGapsModal());
+
     const generateBtn = U.el('button', { class: 'btn btn--primary', html: SSD.Icons.svg('wand', { size: 16 }) }, ['Dienstplan erstellen']);
     generateBtn.addEventListener('click', () => openGenerateModal());
 
@@ -430,7 +549,7 @@ SSD.Views.AdminSchedule = (function () {
           nextBtn, todayBtn,
         ]),
       ]),
-      U.el('div', { class: 'page-header__actions' }, [absenceBtn, transferBtn, exportBtn, generateBtn]),
+      U.el('div', { class: 'page-header__actions' }, [absenceBtn, transferBtn, fillGapsBtn, exportBtn, generateBtn]),
     ]);
   }
 
