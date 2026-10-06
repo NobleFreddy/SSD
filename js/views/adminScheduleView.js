@@ -115,6 +115,8 @@ SSD.Views.AdminSchedule = (function () {
       const ids = [select1.value, select2.value].filter(Boolean);
       if (ids.length === 2 && ids[0] === ids[1]) {
         warnBox.appendChild(warningLine('Dieselbe Person kann nicht zweimal im selben Dienst eingeteilt werden.'));
+      } else if (ids.length === 2 && SSD.DistributionService.isNeverPair(ids[0], ids[1])) {
+        warnBox.appendChild(warningLine(`${ids.map((id) => SSD.StudentService.fullName(SSD.StudentService.getById(id))).join(' und ')} sollen laut Paar-Regel nie zusammen eingeteilt werden.`));
       }
       ids.forEach((id) => {
         const conflicts = getConflicts(id, dateIso, weekday, block);
@@ -269,12 +271,15 @@ SSD.Views.AdminSchedule = (function () {
       renderContent();
 
       const stats = result.stats;
+      const perWeek = stats.perPersonWeekMax
+        ? ` · Dienste pro Person und Woche: ${stats.perPersonWeekMin === stats.perPersonWeekMax ? stats.perPersonWeekMax : `${stats.perPersonWeekMin}–${stats.perPersonWeekMax}`} (Ø ${String(stats.perPersonWeekAvg).replace('.', ',')})`
+        : '';
       if (stats.totalSlots === 0) {
         SSD.Toast.warning('Keine Dienste geplant', stats.message || 'Im gewählten Zeitraum sind alle Tage gesperrt oder keine Dienstblöcke aktiv.');
       } else if (stats.unfilledSlots > 0) {
-        SSD.Toast.warning('Dienstplan erstellt — mit Lücken', `${stats.filledSlots}/${stats.totalSlots} Dienste vollständig besetzt · Fairness-Score ${stats.fairnessScore}%.`);
+        SSD.Toast.show({ type: 'warning', title: 'Dienstplan erstellt — mit Lücken', message: `${stats.filledSlots}/${stats.totalSlots} Dienste vollständig besetzt${perWeek}.`, duration: 8000 });
       } else {
-        SSD.Toast.success('Dienstplan erfolgreich erstellt!', `Alle ${stats.totalSlots} Dienste besetzt · Fairness-Score ${stats.fairnessScore}%.`);
+        SSD.Toast.show({ type: 'success', title: 'Dienstplan erfolgreich erstellt!', message: `Alle ${stats.totalSlots} Dienste besetzt${perWeek}.`, duration: 8000 });
       }
     } catch (err) {
       console.error(err);
@@ -319,7 +324,7 @@ SSD.Views.AdminSchedule = (function () {
       ]),
       previewText,
       warnBox,
-      U.el('p', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, ['Der Algorithmus berücksichtigt Verfügbarkeiten, Sperrzeiten, Fairness, Geschlechtermischung und Partnerwechsel automatisch.']),
+      U.el('p', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, ['Der Algorithmus berücksichtigt Verfügbarkeiten, Sperrzeiten und eine gleichmäßige Verteilung sowie die Regeln und Prioritäten unter „Verteilung“ (Wunschpartner:innen, Abijahrgänge, Paar-Regeln, …).']),
     ]);
 
     SSD.Dialog.open({

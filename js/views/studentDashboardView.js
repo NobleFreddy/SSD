@@ -210,6 +210,8 @@ SSD.Views.StudentDashboard = (function () {
       U.el('div', { class: 'stat-tile__label' }, ['Bereits absolvierte Dienste']),
     ]));
 
+    if ((student.role || 'student') === 'student') col.appendChild(buildWishCard(student));
+
     if (student.adminMessage) {
       col.appendChild(U.el('div', { class: 'notice-box' }, [
         U.el('span', { html: SSD.Icons.svg('bell', { size: 20 }) }),
@@ -233,12 +235,52 @@ SSD.Views.StudentDashboard = (function () {
       U.el('div', { class: 'card__body stack gap-2' }, [
         U.el('div', { class: 'cluster gap-2' }, [U.el('span', { html: SSD.Icons.svg('info', { size: 15 }), style: 'color:var(--text-tertiary);display:flex;' }), U.el('strong', { style: 'font-size:var(--font-size-sm);' }, ['Meine Daten'])]),
         infoRow('Klasse', student.schoolClass || '—'),
-        infoRow('Jahrgang', String(student.yearGroup || '—')),
+        infoRow('Abijahrgang', String(student.yearGroup || '—')),
         infoRow('Max. Dienste/Woche', String(student.maxDutiesPerWeek || SSD.SettingsService.get().maxDutiesPerWeek)),
       ]),
     ]));
 
     return col;
+  }
+
+  /** Wunschpartner:innen: bis zu drei andere Sanis, mit denen man bevorzugt Dienst macht. */
+  function buildWishCard(student) {
+    const others = SSD.StudentService.getActiveByRole('student')
+      .filter((s) => s.id !== student.id)
+      .sort((a, b) => a.lastName.localeCompare(b.lastName));
+    const current = SSD.StudentService.getPreferredPartners(student).map((s) => s.id);
+
+    const selects = Array.from({ length: SSD.StudentService.MAX_PREFERRED_PARTNERS }, (_, i) => U.el('select', { class: 'select' }, [
+      U.el('option', { value: '' }, ['— keine Auswahl —']),
+      ...others.map((o) => U.el('option', { value: o.id, selected: current[i] === o.id }, [SSD.StudentService.fullName(o)])),
+    ]));
+    selects.forEach((sel) => {
+      sel.addEventListener('change', () => {
+        if (sel.value && selects.some((other) => other !== sel && other.value === sel.value)) {
+          sel.value = '';
+          SSD.Toast.warning('Bereits ausgewählt', 'Jede Person kann nur einmal ausgewählt werden.');
+          return;
+        }
+        const saved = SSD.StudentService.setPreferredPartners(student.id, selects.map((s) => s.value).filter(Boolean));
+        const names = saved.map((id) => SSD.StudentService.fullName(SSD.StudentService.getById(id)));
+        SSD.Toast.show({ type: 'success', title: 'Gespeichert', message: names.length ? `Wunschpartner:innen: ${names.join(', ')}` : 'Keine Wunschpartner:innen ausgewählt.', duration: 2200 });
+      });
+    });
+
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'card__body stack gap-2' }, [
+        U.el('div', { class: 'cluster gap-2' }, [
+          U.el('span', { html: SSD.Icons.svg('heart', { size: 15 }), style: 'color:var(--color-primary);display:flex;' }),
+          U.el('strong', { style: 'font-size:var(--font-size-sm);' }, ['Meine Wunschpartner:innen']),
+        ]),
+        others.length
+          ? U.el('div', { class: 'stack gap-2' }, selects)
+          : U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-sm);' }, ['Noch keine weiteren Sanis im Team.']),
+        U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, [
+          'Der Dienstplan versucht, Sie öfter mit diesen Personen einzuteilen — ohne Garantie, Verfügbarkeit und gleichmäßige Verteilung gehen vor. Gegenseitige Wünsche zählen stärker. Ihre Auswahl sehen nur Sie und die Administration.',
+        ]),
+      ]),
+    ]);
   }
 
   function infoRow(label, value) {
@@ -320,7 +362,7 @@ SSD.Views.StudentDashboard = (function () {
 
   function buildOpenSeatRow(student, seat) {
     const entry = seat.entry;
-    const check = SSD.SelfServiceService.canClaim(student.id, entry, seat.seatType);
+    const check = SSD.SelfServiceService.canClaim(student.id, entry, seat.seatType, seat.requestedBy);
     const otherOccupants = seat.seatType === 'student'
       ? entry.studentIds.map((id) => SSD.StudentService.getById(id)).filter(Boolean)
       : [];

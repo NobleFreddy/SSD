@@ -23,6 +23,7 @@
     SSD.Router.register('/admin/students', SSD.Views.AdminStudents, ['admin']);
     SSD.Router.register('/admin/calendar', SSD.Views.AdminCalendar, ['admin']);
     SSD.Router.register('/admin/schedule', SSD.Views.AdminSchedule, ['admin']);
+    SSD.Router.register('/admin/distribution', SSD.Views.AdminDistribution, ['admin']);
     SSD.Router.register('/admin/events', SSD.Views.AdminEvents, ['admin']);
     SSD.Router.register('/admin/tasks', SSD.Views.AdminTasks, ['admin']);
     SSD.Router.register('/admin/materials', SSD.Views.AdminMaterials, ['admin']);

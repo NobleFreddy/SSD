@@ -91,7 +91,7 @@ SSD.ImportExport = (function () {
     const students = SSD.StudentService.getAll();
     const rows = [STUDENT_CSV_HEADERS];
     students.forEach((s) => {
-      rows.push([s.firstName, s.lastName, s.username, s.role === 'azubi' ? 'Azubi' : 'Schüler:in', s.gender, s.schoolClass, s.yearGroup, s.maxDutiesPerWeek ?? '', s.active ? 'ja' : 'nein', s.notes]);
+      rows.push([s.firstName, s.lastName, s.username, s.role === 'azubi' ? 'Azubi' : 'Schüler:in', s.gender, s.schoolClass, s.yearGroup ?? '', s.maxDutiesPerWeek ?? '', s.active ? 'ja' : 'nein', s.notes]);
     });
     U.downloadBlob(`schueler_export_${U.toIsoDate(U.today())}.csv`, buildCsv(rows), 'text/csv;charset=utf-8');
   }
@@ -117,7 +117,7 @@ SSD.ImportExport = (function () {
       role: /azubi/i.test(row[idx('Kategorie')] || '') ? 'azubi' : 'student',
       gender: (row[idx('Geschlecht')] || 'd').trim().toLowerCase().charAt(0) || 'd',
       schoolClass: row[idx('Klasse')] || '',
-      yearGroup: Number(row[idx('Jahrgang')]) || new Date().getFullYear(),
+      yearGroup: Number(row[idx('Jahrgang')]) || null,
       maxDutiesPerWeek: row[idx('MaxDiensteProWoche')] ? Number(row[idx('MaxDiensteProWoche')]) : null,
       active: idx('Aktiv') >= 0 ? !/^(nein|false|0)$/i.test((row[idx('Aktiv')] || '').trim()) : true,
       notes: row[idx('Bemerkungen')] || '',
@@ -168,7 +168,7 @@ SSD.ImportExport = (function () {
       `schueler_export_${U.toIsoDate(U.today())}.xls`,
       'Schülerliste — Schulsanitätsdienst',
       STUDENT_CSV_HEADERS,
-      students.map((s) => [s.firstName, s.lastName, s.username, s.role === 'azubi' ? 'Azubi' : 'Schüler:in', s.gender, s.schoolClass, s.yearGroup, s.maxDutiesPerWeek ?? '', s.active ? 'ja' : 'nein', s.notes])
+      students.map((s) => [s.firstName, s.lastName, s.username, s.role === 'azubi' ? 'Azubi' : 'Schüler:in', s.gender, s.schoolClass, s.yearGroup ?? '', s.maxDutiesPerWeek ?? '', s.active ? 'ja' : 'nein', s.notes])
     );
   }
 

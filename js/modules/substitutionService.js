@@ -86,16 +86,23 @@ SSD.SubstitutionService = (function () {
    * ------------------------------------------------------------------- */
   function explainIneligibility(context, slot, student) {
     if (!student.active) return 'deaktiviert';
-    const blockIdx = U.DUTY_BLOCK_KEYS.indexOf(slot.block);
-    if (student.availability[slot.weekday][blockIdx] !== 'available') return 'für diesen Termin nicht verfügbar/gesperrt';
+    if (!context.availabilityAllows(student, slot)) return 'für diesen Termin nicht verfügbar/gesperrt';
     const maxTotal = context.settings.maxDutiesTotal;
     if (maxTotal && context.totalCount.get(student.id) >= maxTotal) return 'hat das Gesamtlimit erreicht';
     const maxWeek = student.maxDutiesPerWeek || context.settings.maxDutiesPerWeek;
     const wkey = `${student.id}|${slot.weekMonday}`;
     if ((context.weekCount.get(wkey) || 0) >= maxWeek) return 'hat das Wochenlimit bereits erreicht';
     const dayBlocks = context.dayBlocks.get(student.id)?.get(slot.date);
-    if (dayBlocks && dayBlocks.size > 0 && !context.settings.allowSameDayDuties) return 'ist an diesem Tag bereits eingeteilt';
-    return 'erfüllt eine Mindestpausen-Regel nicht';
+    if (dayBlocks && dayBlocks.size > 0) {
+      if (!context.settings.allowSameDayDuties) return 'ist an diesem Tag bereits eingeteilt';
+      const order = (key) => U.DUTY_BLOCKS.find((b) => b.key === key).order;
+      if (Array.from(dayBlocks).some((b) => Math.abs(order(b) - order(slot.block)) <= context.settings.minBreakBlocks)) {
+        return 'erfüllt eine Mindestpausen-Regel nicht';
+      }
+    }
+    const neverId = context.neverPartnerIn(student.id, slot);
+    if (neverId) return `soll laut Paar-Regel nie mit ${studentName(neverId)} eingeteilt werden`;
+    return 'erfüllt eine Regel nicht';
   }
 
   function buildNoCandidateExplanation(context, slot, excludeIds) {
@@ -127,7 +134,7 @@ SSD.SubstitutionService = (function () {
 
     // Geschlechtermischung mit den verbleibenden Partner:innen dieses Dienstes
     let genderPts = SCORE_WEIGHTS.GENDER;
-    if (context.settings.preferMixedGender && currentPartnerIds.length === 1) {
+    if (context.w.genderMix > 0 && currentPartnerIds.length === 1) {
       const partner = context.studentsById.get(currentPartnerIds[0]);
       if (partner && candidate.gender !== partner.gender) {
         reasons.push('Ergibt ein gemischtes Team (Mädchen + Junge)');
@@ -144,6 +151,9 @@ SSD.SubstitutionService = (function () {
       const names = currentPartnerIds.map(studentName).join(' & ');
       reasons.push(priorCount === 0 ? `Noch nie mit ${names} eingeteilt` : `Bereits ${priorCount}× mit ${names} eingeteilt`);
     }
+    const wished = currentPartnerIds.find((pid) => (context.wishes.get(candidateId) && context.wishes.get(candidateId).has(pid))
+      || (context.wishes.get(pid) && context.wishes.get(pid).has(candidateId)));
+    if (wished) reasons.unshift(`Gewünschtes Team mit ${studentName(wished)}`);
 
     // Wochentagsverteilung: ist dieser Wochentag für die Person schon überdurchschnittlich oft belegt?
     const weekdayCounts = context.weekdayCount.get(candidateId);
@@ -189,9 +199,9 @@ SSD.SubstitutionService = (function () {
     const { vacancies, studentContext, azubiContext } = buildContextsAndVacancies(affectedEntries, absentSet, settings);
     const proposals = resolveVacancies(vacancies, absentSet);
 
-    const activeStudents = SSD.StudentService.getActiveByRole('student');
+    const activeStudents = SSD.StudentService.getActiveByRole('student').filter(SSD.StatisticsService.hasAnyAvailability);
     const afterCounts = activeStudents.map((s) => studentContext.totalCount.get(s.id));
-    const fairnessAfter = U.fairnessScoreFromStdDev(U.standardDeviation(afterCounts));
+    const fairnessAfter = SSD.StatisticsService.fairnessScoreForCounts(afterCounts);
 
     // Ursprüngliche Reihenfolge (nach Datum/Block) statt MRV-Bearbeitungsreihenfolge für die Anzeige.
     proposals.sort((a, b) => (a.slot.key + a.absentStudentId).localeCompare(b.slot.key + b.absentStudentId));
@@ -336,8 +346,8 @@ SSD.SubstitutionService = (function () {
     resolve(studentProposals, studentContext);
     resolve(azubiProposals, azubiContext);
 
-    const afterCounts = activeStudents.map((s) => studentContext.totalCount.get(s.id));
-    const fairnessAfter = U.fairnessScoreFromStdDev(U.standardDeviation(afterCounts));
+    const afterCounts = activeStudents.filter(SSD.StatisticsService.hasAnyAvailability).map((s) => studentContext.totalCount.get(s.id));
+    const fairnessAfter = SSD.StatisticsService.fairnessScoreForCounts(afterCounts);
     return { proposals, fairnessAfter };
   }
 

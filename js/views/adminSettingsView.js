@@ -42,46 +42,87 @@ SSD.Views.AdminSettings = (function () {
     ]);
   }
 
-  function buildRulesCard() {
+  function buildGeneralCard() {
     const s = SSD.SettingsService.get();
-    const maxWeekInput = U.el('input', { class: 'input', type: 'number', min: '1', value: s.maxDutiesPerWeek });
-    const maxTotalInput = U.el('input', { class: 'input', type: 'number', min: '0', value: s.maxDutiesTotal ?? '', placeholder: 'Kein Limit' });
-    const minBreakInput = U.el('input', { class: 'input', type: 'number', min: '0', value: s.minBreakBlocks });
-    const perDutyInput = U.el('input', { class: 'input', type: 'number', min: '1', max: '4', value: s.studentsPerDuty });
     const deadlineInput = U.el('input', { class: 'input', type: 'number', min: '0', value: s.changeDeadlineDaysBeforeWeek });
 
     function commit(patch, message) {
       SSD.SettingsService.update(patch);
       SSD.Toast.success('Gespeichert', message);
     }
-
-    maxWeekInput.addEventListener('change', () => commit({ maxDutiesPerWeek: Math.max(1, Number(maxWeekInput.value) || 1) }, 'Maximale Dienste pro Woche aktualisiert.'));
-    maxTotalInput.addEventListener('change', () => commit({ maxDutiesTotal: maxTotalInput.value ? Math.max(0, Number(maxTotalInput.value)) : null }, 'Maximale Dienste insgesamt aktualisiert.'));
-    minBreakInput.addEventListener('change', () => commit({ minBreakBlocks: Math.max(0, Number(minBreakInput.value) || 0) }, 'Mindestpause aktualisiert.'));
-    perDutyInput.addEventListener('change', () => commit({ studentsPerDuty: U.clamp(Number(perDutyInput.value) || 2, 1, 4) }, 'Teamgröße pro Dienst aktualisiert.'));
     deadlineInput.addEventListener('change', () => commit({ changeDeadlineDaysBeforeWeek: Math.max(0, Number(deadlineInput.value) || 0) }, 'Änderungsfrist aktualisiert.'));
 
-    const card = U.el('div', { class: 'card' }, [
-      U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Planungsregeln'])]),
-    ]);
-    const body = U.el('div', { class: 'card__body stack gap-2' }, [
-      U.el('div', { class: 'grid grid-cols-2' }, [
-        field('Maximale Dienste pro Woche (Standard)', maxWeekInput, 'Kann pro Schüler:in individuell überschrieben werden.'),
-        field('Maximale Dienste insgesamt', maxTotalInput, 'Optionales Gesamtlimit über das ganze Schuljahr.'),
+    const toDistribution = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('sliders', { size: 14 }) }, ['Zur Verteilung']);
+    toDistribution.addEventListener('click', () => SSD.Router.navigate('/admin/distribution'));
+
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Allgemein'])]),
+      U.el('div', { class: 'card__body stack gap-2' }, [
+        field('Änderungsfrist für Schüler:innen (Tage vor Wochenbeginn)', deadlineInput, 'Ab diesem Zeitpunkt ist die Verfügbarkeit für die Folgewoche gesperrt.'),
+        U.el('hr', { class: 'divider' }),
+        switchRow('Automatisches Speichern', 'Änderungen sofort für alle sichtbar speichern (empfohlen). Bei Deaktivierung erscheint oben ein manueller Speichern-Button.', s.autoSave, (val) => commit({ autoSave: val }, 'Einstellung aktualisiert.')),
+        U.el('hr', { class: 'divider' }),
+        U.el('div', { class: 'cluster gap-3', style: 'justify-content:space-between;' }, [
+          U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, ['Dienste pro Woche, Teamgröße, Prioritäten, Abijahrgangs- und Paar-Regeln finden Sie unter „Verteilung“.']),
+          toDistribution,
+        ]),
       ]),
-      U.el('div', { class: 'grid grid-cols-2' }, [
-        field('Anzahl Schüler:innen pro Dienst', perDutyInput, 'Standard: 2'),
-        field('Mindestpause zwischen zwei Diensten (in Blöcken)', minBreakInput, 'Nur relevant, wenn mehrere Dienste am selben Tag erlaubt sind.'),
-      ]),
-      field('Änderungsfrist für Schüler:innen (Tage vor Wochenbeginn)', deadlineInput, 'Ab diesem Zeitpunkt ist die Verfügbarkeit für die Folgewoche gesperrt.'),
-      U.el('hr', { class: 'divider' }),
-      switchRow('Gemischte Paare bevorzugen', 'Bei der Optimierung möglichst ein Mädchen und einen Jungen einteilen.', s.preferMixedGender, (val) => commit({ preferMixedGender: val }, 'Einstellung aktualisiert.')),
-      switchRow('Mehrere Dienste am selben Tag erlauben', 'Standardmäßig deaktiviert, um Schüler:innen nicht zu überlasten.', s.allowSameDayDuties, (val) => commit({ allowSameDayDuties: val }, 'Einstellung aktualisiert.')),
-      switchRow('Automatisches Speichern', 'Änderungen sofort für alle sichtbar speichern (empfohlen). Bei Deaktivierung erscheint oben ein manueller Speichern-Button.', s.autoSave, (val) => commit({ autoSave: val }, 'Einstellung aktualisiert.')),
-      switchRow('Selbstregistrierung erlauben', 'Schüler:innen und Azubis können sich über den Login-Bildschirm selbst ein Konto anlegen. Neue Konten sind zunächst inaktiv und müssen in der Schülerverwaltung freigeschaltet werden.', s.allowSelfRegistration, (val) => commit({ allowSelfRegistration: val }, 'Einstellung aktualisiert.')),
     ]);
-    card.appendChild(body);
-    return card;
+  }
+
+  function buildRegistrationCard() {
+    const s = SSD.SettingsService.get();
+    const hasCode = SSD.Auth.hasRegistrationCode();
+
+    const codeInput = U.el('input', { class: 'input', placeholder: hasCode ? 'Neuen Schulcode eingeben' : 'Schulcode festlegen', autocomplete: 'off', spellcheck: 'false', style: 'flex:1; min-width:0;' });
+    const generateBtn = U.el('button', { type: 'button', class: 'btn btn--secondary', html: SSD.Icons.svg('refresh', { size: 15 }) }, ['Zufällig']);
+    generateBtn.addEventListener('click', () => { codeInput.value = SSD.Auth.generateRegistrationCode(); codeInput.focus(); });
+
+    const saveBtn = U.el('button', { class: 'btn btn--primary' }, [hasCode ? 'Code ersetzen' : 'Code speichern']);
+    saveBtn.addEventListener('click', async () => {
+      const code = codeInput.value.trim();
+      if (!SSD.Auth.isValidRegistrationCode(code)) {
+        SSD.Toast.error('Code zu kurz', `Der Schulcode braucht mindestens ${SSD.Auth.REGISTRATION_CODE_MIN_LENGTH} Zeichen (Leerzeichen/Bindestriche zählen nicht).`);
+        return;
+      }
+      saveBtn.disabled = true;
+      await SSD.Auth.setRegistrationCode(code);
+      SSD.Toast.show({ type: 'success', title: 'Schulcode gespeichert', message: `Neuer Code: ${code} — bitte notieren, er wird aus Sicherheitsgründen nicht mehr angezeigt.`, duration: 15000 });
+    });
+
+    const actions = [saveBtn];
+    if (hasCode) {
+      const removeBtn = U.el('button', { class: 'btn btn--ghost' }, ['Code entfernen']);
+      removeBtn.addEventListener('click', async () => {
+        const ok = await SSD.Dialog.confirm({
+          title: 'Schulcode entfernen', confirmLabel: 'Entfernen',
+          message: 'Neue Registrierungen müssen danach wieder von Ihnen in der Schülerverwaltung freigeschaltet werden. Fortfahren?',
+        });
+        if (!ok) return;
+        await SSD.Auth.setRegistrationCode(null);
+        SSD.Toast.info('Schulcode entfernt', 'Neue Konten warten jetzt wieder auf Ihre Freischaltung.');
+      });
+      actions.push(removeBtn);
+    }
+
+    const status = hasCode
+      ? U.el('div', { class: 'cluster gap-2' }, [U.el('span', { class: 'badge badge--success' }, ['Schulcode aktiv']), U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, ['Wer sich mit dem richtigen Code registriert, ist sofort freigeschaltet.'])])
+      : U.el('div', { class: 'cluster gap-2' }, [U.el('span', { class: 'badge' }, ['Kein Schulcode']), U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, ['Neue Konten müssen in der Schülerverwaltung freigeschaltet werden.'])]);
+
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Selbstregistrierung'])]),
+      U.el('div', { class: 'card__body stack gap-3' }, [
+        switchRow('Selbstregistrierung erlauben', 'Schüler:innen und Azubis können sich über den Login-Bildschirm selbst ein Konto anlegen.', s.allowSelfRegistration, (val) => {
+          SSD.SettingsService.update({ allowSelfRegistration: val });
+          SSD.Toast.success('Gespeichert', 'Einstellung aktualisiert.');
+        }),
+        U.el('hr', { class: 'divider' }),
+        status,
+        field(hasCode ? 'Schulcode ersetzen' : 'Schulcode festlegen', U.el('div', { class: 'cluster gap-2', style: 'flex-wrap:nowrap;' }, [codeInput, generateBtn]),
+          'Groß-/Kleinschreibung, Leerzeichen und Bindestriche spielen bei der Eingabe keine Rolle. Der Code wird verschlüsselt gespeichert und kann danach nicht mehr angezeigt werden — bitte notieren.'),
+        U.el('div', { class: 'cluster gap-2' }, actions),
+      ]),
+    ]);
   }
 
   function buildAdminCard() {
@@ -169,10 +210,11 @@ SSD.Views.AdminSettings = (function () {
   function renderContent() {
     layoutHandle.contentEl.innerHTML = '';
     layoutHandle.contentEl.appendChild(U.el('div', { class: 'page-header' }, [
-      U.el('div', { class: 'page-header__text' }, [U.el('h1', {}, ['Einstellungen']), U.el('p', {}, ['Planungsregeln, Zugangsdaten und Datenverwaltung.'])]),
+      U.el('div', { class: 'page-header__text' }, [U.el('h1', {}, ['Einstellungen']), U.el('p', {}, ['Schule, Selbstregistrierung, Zugangsdaten und Datenverwaltung.'])]),
     ]));
     layoutHandle.contentEl.appendChild(buildSchoolCard());
-    layoutHandle.contentEl.appendChild(buildRulesCard());
+    layoutHandle.contentEl.appendChild(buildGeneralCard());
+    layoutHandle.contentEl.appendChild(buildRegistrationCard());
     layoutHandle.contentEl.appendChild(buildAdminCard());
     layoutHandle.contentEl.appendChild(buildDataCard());
   }

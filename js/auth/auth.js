@@ -85,15 +85,74 @@ SSD.Auth = (function () {
   }
 
   /* ---------------------------------------------------------------------
+   * Schulcode für die Selbstregistrierung
+   * ---------------------------------------------------------------------
+   * Wer sich mit dem richtigen Code registriert, ist sofort freigeschaltet.
+   * Gespeichert wird nur ein gesalzener Hash — der gesamte Datenstand ist
+   * mit dem öffentlichen Datenbankschlüssel lesbar, ein Klartext-Code wäre
+   * also für jeden in den Entwicklertools sichtbar. Wie die Passwortprüfung
+   * läuft auch diese Prüfung im Browser (Komfort-Hürde, keine harte
+   * Zugangskontrolle — siehe README).
+   */
+
+  const REGISTRATION_CODE_MIN_LENGTH = 6;
+  const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne verwechselbare Zeichen (0/O, 1/I)
+
+  /** Groß-/Kleinschreibung, Leerzeichen und Bindestriche spielen bei der Eingabe keine Rolle. */
+  function normalizeRegistrationCode(code) {
+    return String(code || '').toUpperCase().replace(/[\s-]/g, '');
+  }
+
+  function isValidRegistrationCode(code) {
+    return normalizeRegistrationCode(code).length >= REGISTRATION_CODE_MIN_LENGTH;
+  }
+
+  /** Zufälliger, gut diktierbarer Code im Format SANI-XXXX-XXXX. */
+  function generateRegistrationCode() {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+    return `SANI-${chars.slice(0, 4)}-${chars.slice(4)}`;
+  }
+
+  async function hashRegistrationCode(code) {
+    const salt = generateSalt();
+    return { registrationCodeHash: await hashPassword(normalizeRegistrationCode(code), salt), registrationCodeSalt: salt };
+  }
+
+  function hasRegistrationCode() {
+    const settings = SSD.Store.getState().settings;
+    return !!(settings.registrationCodeHash && settings.registrationCodeSalt);
+  }
+
+  async function verifyRegistrationCode(code) {
+    const settings = SSD.Store.getState().settings;
+    if (!hasRegistrationCode()) return false;
+    return verifyPassword(normalizeRegistrationCode(code), settings.registrationCodeSalt, settings.registrationCodeHash);
+  }
+
+  /** Setzt einen neuen Schulcode oder entfernt ihn (`code` leer/null). */
+  async function setRegistrationCode(code) {
+    const patch = code
+      ? await hashRegistrationCode(code)
+      : { registrationCodeHash: null, registrationCodeSalt: null };
+    SSD.Store.commit(code ? 'Schulcode festgelegt' : 'Schulcode entfernt', (draft) => {
+      Object.assign(draft.settings, patch);
+    }, { trackHistory: false });
+  }
+
+  /* ---------------------------------------------------------------------
    * Ersteinrichtung
    * ------------------------------------------------------------------- */
 
-  async function completeSetup({ schoolName, adminUsername, adminPassword }) {
+  async function completeSetup({ schoolName, adminUsername, adminPassword, registrationCode }) {
     const salt = generateSalt();
     const passwordHash = await hashPassword(adminPassword, salt);
+    const codePatch = registrationCode ? await hashRegistrationCode(registrationCode) : null;
     SSD.Store.commit('Ersteinrichtung abgeschlossen', (draft) => {
       draft.school.name = schoolName || 'Meine Schule';
       draft.admin = { username: adminUsername, passwordHash, salt };
+      if (codePatch) Object.assign(draft.settings, codePatch);
       draft.meta.setupComplete = true;
     }, { trackHistory: false });
     setSession({ role: 'admin' });
@@ -161,5 +220,7 @@ SSD.Auth = (function () {
     getSession, setSession, logout, getCurrentStudent,
     completeSetup, loginAdmin, loginStudent,
     setStudentPassword, changeAdminCredentials, isUsernameTaken,
+    REGISTRATION_CODE_MIN_LENGTH, normalizeRegistrationCode, isValidRegistrationCode,
+    generateRegistrationCode, hasRegistrationCode, verifyRegistrationCode, setRegistrationCode,
   };
 })();

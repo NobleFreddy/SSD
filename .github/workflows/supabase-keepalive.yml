@@ -1,0 +1,27 @@
+name: Supabase wach halten
+
+# Supabase pausiert Projekte im kostenlosen Tarif nach ca. 7 Tagen ohne
+# Nutzung — der Dienstplan lädt dann keine Daten mehr (z. B. nach den
+# Ferien). Eine Mini-Leseabfrage alle 3 Tage verhindert das. URL und
+# öffentlicher Schlüssel kommen aus js/core/supabaseConfig.js, damit es
+# nur eine Stelle gibt, an der sie gepflegt werden.
+on:
+  schedule:
+    - cron: '17 6 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Datenbank anpingen
+        run: |
+          CONFIG=js/core/supabaseConfig.js
+          URL=$(sed -n "s/.*URL: '\([^']*\)'.*/\1/p" "$CONFIG")
+          KEY=$(sed -n "s/.*ANON_KEY: '\([^']*\)'.*/\1/p" "$CONFIG")
+          TABLE=$(sed -n "s/.*TABLE: '\([^']*\)'.*/\1/p" "$CONFIG")
+          curl --fail --silent --show-error --max-time 30 \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            "$URL/rest/v1/$TABLE?select=id&limit=1" > /dev/null
+          echo "Datenbank erreichbar."

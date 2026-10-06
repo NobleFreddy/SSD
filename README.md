@@ -115,24 +115,47 @@ zweiphasiges Verfahren:
    verplant, statt sich durch eine ungünstige Reihenfolge selbst in eine
    Sackgasse zu manövrieren.
 2. **Lokale Suche (Simulated Annealing).** Anschließend werden tausende
-   zufällige, aber stets zulässige Änderungen erprobt (zwei Personen
-   tauschen, offene Dienste nachbesetzen). Verbesserungen werden immer
+   zufällige, aber stets zulässige Änderungen erprobt: offene Dienste
+   nachbesetzen, einen Dienst von einer stark auf eine weniger belastete
+   Person **umverteilen**, zwei Personen tauschen und — für Wunsch- und
+   bevorzugte Paare — gezielte Partner-Züge. Verbesserungen werden immer
    übernommen, Verschlechterungen nur mit einer über die Zeit sinkenden
-   Wahrscheinlichkeit — dadurch entkommt der Algorithmus lokalen
-   Sackgassen, ohne sich in einer schlechteren Lösung festzufahren. Diese
-   Phase läuft "gechunkt" (`async`/`await` mit `nextTick`-Pausen), damit der
-   Haupt-Thread nicht blockiert und die Ladeanimation flüssig bleibt.
+   Wahrscheinlichkeit. Diese Phase läuft "gechunkt" (`async`/`await` mit
+   `nextTick`-Pausen), damit die Ladeanimation flüssig bleibt.
 
 **Harte Bedingungen** (nie verletzt): nur verfügbare/aktive Schüler:innen,
 keine gesperrten Zeiten, keine deaktivierten Tage/Blöcke, niemand doppelt im
-selben Dienst, wöchentliche/gesamte Höchstgrenzen pro Person.
+selben Dienst, wöchentliche/gesamte Höchstgrenzen pro Person, Paar-Regeln
+„nie zusammen“.
 
-**Weiche Bedingungen** (Kostenfunktion, siehe `WEIGHTS` in `scheduler.js`):
-Fairness (Streuung der Gesamtdienste), Geschlechtermischung, Partnerwechsel
-(quadratisch bestrafte Wiederholungen), keine Wiederholung desselben
-Wochentag/Block-Slots wie in der Vorwoche, gleichmäßige Verteilung über die
-Wochentage. Die Gewichte lassen sich zentral an einer Stelle anpassen, falls
-eine Schule andere Prioritäten setzen möchte.
+**Weiche Bedingungen** (Kostenfunktion, Basis siehe `WEIGHTS` in
+`scheduler.js`): gleichmäßige Dienstanzahl pro Woche und über das Schuljahr
+(jeweils nur unter Personen, die laut Verfügbarkeit überhaupt infrage
+kommen), Geschlechtermischung, Partnerwechsel, Partnerwünsche der Sanis,
+Paar-Regeln „bevorzugt“, Abijahrgangs-Regeln, Abwechslung der Termine und
+Verteilung über die Wochentage. Wie stark jedes Kriterium zählt, stellt der
+Administrator unter **Verteilung → Prioritäten** ein (Aus / Niedrig / Mittel
+/ Hoch).
+
+### Verteilung steuern (Admin-Bereich „Verteilung“)
+
+- **Grundregeln:** Max. Dienste pro Person und Woche/insgesamt, Personen pro
+  Dienst, Mindestpause, mehrere Dienste am selben Tag. Soll niemand mehr als
+  eine bestimmte Zahl Dienste pro Woche machen — auch wenn dann Dienste offen
+  bleiben —, ist das Wochenlimit das richtige Werkzeug.
+- **Prioritäten:** Stärke der weichen Kriterien (siehe oben).
+- **Abijahrgänge:** Grundregel (egal / verschiedene Jahrgänge mischen /
+  gleiche Jahrgänge zusammen) plus einzelne Kombinationen „bevorzugt“ oder
+  „möglichst nicht“. Personen ohne Abijahrgang werden ignoriert.
+- **Paar-Regeln:** zwei bestimmte Personen „bevorzugt zusammen“ oder „nie
+  zusammen“ (gilt auch bei Vertretungen und beim Selbst-Übernehmen).
+- **Partnerwünsche:** Jede:r Sani wählt im eigenen Bereich bis zu drei
+  Wunschpartner:innen; gegenseitige Wünsche zählen stärker. Die Übersicht
+  sieht nur der Administrator.
+
+Bei sehr knapper Verfügbarkeit sind viele Paarungen bereits vorgegeben —
+Wünsche und Jahrgangsregeln wirken dann entsprechend schwächer. Die
+Abdeckung (möglichst viele besetzte Dienste) wird dafür nie geopfert.
 
 ## Vertretungsmodus
 
@@ -219,10 +242,16 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
 - **Administrator:** ein Konto, im Einrichtungsassistenten angelegt,
   Zugangsdaten änderbar unter *Einstellungen*. Vollzugriff auf alle
   Bereiche.
-- **Schüler:in:** vom Administrator angelegtes Konto. Sieht ausschließlich
-  die eigene Verfügbarkeit, eigene Dienste und persönliche Hinweise.
-  Änderungen an der Verfügbarkeit sind nur innerhalb des in den
-  Einstellungen konfigurierten Zeitfensters möglich ("Änderungsfrist").
+- **Schüler:in:** vom Administrator angelegtes oder selbst registriertes
+  Konto. Sieht die eigene Verfügbarkeit, eigene Dienste, persönliche
+  Hinweise und die eigenen Wunschpartner:innen. Änderungen an der
+  Verfügbarkeit sind nur innerhalb des in den Einstellungen konfigurierten
+  Zeitfensters möglich ("Änderungsfrist").
+- **Selbstregistrierung & Schulcode:** Ist unter *Einstellungen →
+  Selbstregistrierung* (oder bei der Ersteinrichtung) ein Schulcode
+  festgelegt, wird er bei der Registrierung abgefragt; mit dem richtigen Code
+  ist das Konto sofort freigeschaltet und angemeldet. Ohne Schulcode warten
+  neue Konten wie bisher auf die Freischaltung in der Schülerverwaltung.
 
 ## Import / Export
 
@@ -269,6 +298,20 @@ Row-Level-Security-Regeln erforderlich — ein deutlich größerer Umbau, der
 bei Bedarf nachträglich ergänzt werden kann, ohne die übrige Anwendung
 umschreiben zu müssen (die Fachlogik kennt die Datenbank nicht direkt,
 sondern ausschließlich über `js/core/storage.js`).
+
+Der **Schulcode** wird wie Passwörter nur als gesalzener Hash gespeichert und
+im Browser geprüft. Er hält Außenstehende, die nur die Adresse kennen, von
+einer sofort freigeschalteten Registrierung ab — ist aber aus denselben
+Gründen eine Komfort-Hürde und keine harte Zugangskontrolle. Ein langer,
+zufällig erzeugter Code (Button „Zufällig“) ist schwerer zu erraten als ein
+kurzes Wort.
+
+**Datenbank wach halten:** Supabase pausiert Projekte im kostenlosen Tarif
+nach etwa einer Woche ohne Zugriff. Der GitHub-Workflow
+[`.github/workflows/supabase-keepalive.yml`](.github/workflows/supabase-keepalive.yml)
+schickt deshalb alle drei Tage eine Mini-Leseabfrage (manuell auslösbar unter
+*Actions*). Ist das Projekt doch einmal pausiert, lässt es sich im
+Supabase-Dashboard über „Restore project“ wieder aktivieren.
 
 ## Erweiterbarkeit
 

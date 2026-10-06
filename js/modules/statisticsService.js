@@ -13,6 +13,27 @@ SSD.StatisticsService = (function () {
 
   const U = SSD.Utils;
 
+  function hasAnyAvailability(student) {
+    return Object.values(student.availability || {}).some((day) => day.includes('available'));
+  }
+
+  /** Anzahl der Wochen, für die es Diensteinträge gibt (mind. 1). */
+  function plannedWeekCount() {
+    const weeks = new Set(SSD.Store.getState().schedule.entries.map((e) => U.toIsoDate(U.getMondayOfWeek(U.parseIsoDate(e.date)))));
+    return Math.max(1, weeks.size);
+  }
+
+  /**
+   * Fairness-Score (0–100) aus den Dienstzahlen je Person — bezogen auf die
+   * Streuung *pro Woche*, damit der Wert über ein ganzes Schuljahr
+   * vergleichbar bleibt (die Gesamtzahlen streuen mit jeder weiteren Woche
+   * zwangsläufig stärker, auch wenn jede einzelne Woche gleich fair ist).
+   */
+  function fairnessScoreForCounts(counts) {
+    if (!counts.length) return 100;
+    return U.fairnessScoreFromStdDev(U.standardDeviation(counts) / plannedWeekCount());
+  }
+
   function computeOverview() {
     const state = SSD.Store.getState();
     // Nur reguläre Schüler:innen fließen in die Zweier-Paar-Statistik ein —
@@ -54,10 +75,13 @@ SSD.StatisticsService = (function () {
       }
     });
 
-    const counts = Array.from(dutiesPerStudent.values());
+    // Fairness nur über Personen, die laut Verfügbarkeit überhaupt eingeteilt
+    // werden können — wer (noch) nichts eingetragen hat, würde den Wert sonst
+    // dauerhaft drücken, ohne dass die Verteilung daran etwas ändern könnte.
+    const counts = students.filter(hasAnyAvailability).map((s) => dutiesPerStudent.get(s.id));
     const average = U.mean(counts);
     const stdDev = U.standardDeviation(counts);
-    const fairnessScore = counts.length ? U.fairnessScoreFromStdDev(stdDev) : 100;
+    const fairnessScore = fairnessScoreForCounts(counts);
 
     const perStudentList = students
       .map((s) => ({ student: s, count: dutiesPerStudent.get(s.id) || 0 }))
@@ -116,7 +140,7 @@ SSD.StatisticsService = (function () {
       azubiCount: azubis.length,
       filledSlots: filled,
       average: azubis.length ? U.round(U.mean(counts), 2) : 0,
-      fairnessScore: azubis.length ? U.fairnessScoreFromStdDev(U.standardDeviation(counts)) : 100,
+      fairnessScore: azubis.length ? fairnessScoreForCounts(counts) : 100,
       perAzubiList,
     };
   }
@@ -137,5 +161,5 @@ SSD.StatisticsService = (function () {
     };
   }
 
-  return { computeOverview, computeCapacityWarning };
+  return { computeOverview, computeCapacityWarning, hasAnyAvailability, fairnessScoreForCounts };
 })();

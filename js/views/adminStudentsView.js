@@ -39,7 +39,7 @@ SSD.Views.AdminStudents = (function () {
     const roleSelect = U.el('select', { class: 'select' }, SSD.Models.ROLES.map((r) => U.el('option', { value: r.key, selected: (existing?.role || 'student') === r.key }, [r.label])));
     const genderSelect = U.el('select', { class: 'select' }, SSD.Models.GENDERS.map((g) => U.el('option', { value: g.key, selected: existing?.gender === g.key || (!existing && g.key === 'd') }, [g.label])));
     const classInput = U.el('input', { class: 'input', value: existing?.schoolClass || '', placeholder: 'z. B. 10a' });
-    const yearInput = U.el('input', { class: 'input', type: 'number', value: existing?.yearGroup || new Date().getFullYear() });
+    const yearInput = U.el('input', { class: 'input', type: 'number', value: existing?.yearGroup || '', placeholder: `z. B. ${U.schoolYearEnd() + 2}` });
     const maxDutiesInput = U.el('input', { class: 'input', type: 'number', min: '0', value: existing?.maxDutiesPerWeek ?? '', placeholder: `Standard (${settings.maxDutiesPerWeek})` });
     const notesInput = U.el('textarea', { class: 'input', rows: '2' }, [existing?.notes || '']);
     const adminMessageInput = U.el('textarea', { class: 'input', rows: '2', placeholder: 'Wird dem Schüler im Dashboard angezeigt' }, [existing?.adminMessage || '']);
@@ -61,11 +61,17 @@ SSD.Views.AdminStudents = (function () {
       ]),
       U.el('div', { class: 'grid grid-cols-2' }, [
         field('Klasse', classInput),
-        field('Jahrgang', yearInput),
+        field('Abijahrgang', yearInput, 'Jahr des Abiturs — wird für Abijahrgangs-Regeln der Verteilung genutzt.'),
       ]),
       field('Maximale Dienste pro Woche', maxDutiesInput, 'Leer lassen für den globalen Standardwert.'),
       field('Bemerkungen (nur für Administratoren sichtbar)', notesInput),
       field('Persönlicher Hinweis an den Schüler', adminMessageInput, 'Erscheint im Dashboard des Schülers.'),
+      existing && (existing.role || 'student') === 'student' ? U.el('div', { class: 'field' }, [
+        U.el('label', { class: 'field__label' }, ['Wunschpartner:innen (selbst gewählt)']),
+        U.el('div', { class: 'cluster gap-2' }, SSD.StudentService.getPreferredPartners(existing).length
+          ? SSD.StudentService.getPreferredPartners(existing).map((p) => U.el('span', { class: 'badge' }, [SSD.StudentService.fullName(p)]))
+          : [U.el('span', { class: 'text-tertiary' }, ['— keine —'])]),
+      ]) : null,
       existing?.pendingApproval ? U.el('div', { class: 'notice-box' }, [
         U.el('span', { html: SSD.Icons.svg('info', { size: 18 }) }),
         U.el('div', {}, [U.el('strong', {}, ['Selbstregistrierung']), U.el('p', {}, ['Diese Person hat sich selbst registriert und wartet auf Freischaltung. Konto aktivieren, um sie für Dienste verfügbar zu machen.'])]),
@@ -105,7 +111,7 @@ SSD.Views.AdminStudents = (function () {
           role: roleSelect.value,
           gender: genderSelect.value,
           schoolClass: classInput.value.trim(),
-          yearGroup: Number(yearInput.value) || new Date().getFullYear(),
+          yearGroup: Number(yearInput.value) || null,
           maxDutiesPerWeek: maxDutiesInput.value ? Number(maxDutiesInput.value) : null,
           notes: notesInput.value.trim(),
           adminMessage: adminMessageInput.value.trim(),
@@ -225,7 +231,7 @@ SSD.Views.AdminStudents = (function () {
     genderSelect.addEventListener('change', () => { filters.gender = genderSelect.value; renderContent(); });
 
     const yearSelect = U.el('select', { class: 'select' }, [
-      U.el('option', { value: '' }, ['Alle Jahrgänge']),
+      U.el('option', { value: '' }, ['Alle Abijahrgänge']),
       ...SSD.StudentService.getDistinctYearGroups().map((y) => U.el('option', { value: y, selected: String(filters.yearGroup) === String(y) }, [String(y)])),
     ]);
     yearSelect.addEventListener('change', () => { filters.yearGroup = yearSelect.value; renderContent(); });
@@ -266,7 +272,7 @@ SSD.Views.AdminStudents = (function () {
       { key: 'lastName', label: 'Name' },
       { key: 'role', label: 'Kategorie' },
       { key: 'schoolClass', label: 'Klasse' },
-      { key: 'yearGroup', label: 'Jahrgang' },
+      { key: 'yearGroup', label: 'Abijahrgang' },
       { key: 'gender', label: 'Geschlecht' },
       { key: 'duties', label: 'Dienste' },
       { key: 'maxDutiesPerWeek', label: 'Max/Woche' },

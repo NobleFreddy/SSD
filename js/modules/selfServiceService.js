@@ -31,8 +31,13 @@ SSD.SelfServiceService = (function () {
 
   const U = SSD.Utils;
 
-  /** Baut einen auf genau einen Dienst-Slot beschränkten Planungskontext für die gegebene Rolle. */
-  function buildSoloContext(role, targetEntry) {
+  /**
+   * Baut einen auf genau einen Dienst-Slot beschränkten Planungskontext für
+   * die gegebene Rolle. Die übrige aktuelle Besetzung des Dienstes wird
+   * vorbelegt (ohne die Person, deren Platz gerade übernommen wird), damit
+   * Paar-Regeln wie "nie zusammen" auch beim Selbst-Übernehmen greifen.
+   */
+  function buildSoloContext(role, targetEntry, replacedId) {
     const baseSettings = SSD.SettingsService.get();
     const settings = role === 'azubi' ? SSD.Scheduler.azubiSettingsFrom(baseSettings) : baseSettings;
     const roster = SSD.StudentService.getActiveByRole(role);
@@ -41,6 +46,11 @@ SSD.SelfServiceService = (function () {
       ? SSD.Scheduler.buildAzubiHistoryEntries(new Set([slot.key]))
       : SSD.Store.getState().schedule.entries;
     const context = new SSD.Scheduler.SchedulingContext(roster, history, [slot], settings);
+    if (role !== 'azubi') {
+      targetEntry.studentIds
+        .filter((id) => id !== replacedId && context.studentsById.has(id))
+        .forEach((id) => context.assign(slot, id));
+    }
     return { context, slot };
   }
 
@@ -86,14 +96,14 @@ SSD.SelfServiceService = (function () {
    * harten Regeln wie überall sonst — siehe Modulbeschreibung).
    * @returns {{ok: boolean, reason?: string}}
    */
-  function canClaim(personId, entry, seatType) {
+  function canClaim(personId, entry, seatType, requestedBy) {
     const person = SSD.StudentService.getById(personId);
     if (!person || !person.active) return { ok: false, reason: 'Konto ist inaktiv.' };
     if ((person.role || 'student') !== seatType) return { ok: false, reason: 'Dieser Platz ist für eine andere Kategorie vorgesehen.' };
     if (entry.studentIds.includes(personId) || entry.azubiId === personId) {
       return { ok: false, reason: 'Sie sind diesem Dienst bereits zugeteilt.' };
     }
-    const { context, slot } = buildSoloContext(seatType, entry);
+    const { context, slot } = buildSoloContext(seatType, entry, requestedBy);
     if (!context.isEligible(personId, slot)) {
       return { ok: false, reason: SSD.SubstitutionService.explainIneligibility(context, slot, person) };
     }
@@ -108,7 +118,7 @@ SSD.SelfServiceService = (function () {
    * Badge-Anzeige wie beim administrativen Vertretungsmodus greift.
    */
   function claimSeat(personId, entry, seatType, requestedBy) {
-    const check = canClaim(personId, entry, seatType);
+    const check = canClaim(personId, entry, seatType, requestedBy);
     if (!check.ok) throw new Error(check.reason);
 
     const person = SSD.StudentService.getById(personId);

@@ -46,6 +46,7 @@ SSD.DemoData = (function () {
   async function seed() {
     const rng = U.createSeededRandom(20240915);
     const state = SSD.Store.getState();
+    const schoolYearEnd = U.schoolYearEnd();
 
     for (const [firstName, lastName, gender, schoolClass] of NAMES) {
       const username = U.slugifyUsername(`${firstName}.${lastName}`);
@@ -53,7 +54,7 @@ SSD.DemoData = (function () {
       const passwordHash = await SSD.Auth.hashPassword('willkommen', salt);
       state.students.push(SSD.Models.createStudent({
         firstName, lastName, gender, schoolClass, role: 'student',
-        yearGroup: 2025 - Number(schoolClass.replace(/\D/g, '') || 10) + 10,
+        yearGroup: schoolYearEnd + (13 - (Number(schoolClass.replace(/\D/g, '')) || 10)), // Abijahrgang (G9)
         username, passwordHash, salt,
         availability: buildAvailability(rng),
       }));
@@ -65,7 +66,7 @@ SSD.DemoData = (function () {
       const passwordHash = await SSD.Auth.hashPassword('willkommen', salt);
       state.students.push(SSD.Models.createStudent({
         firstName, lastName, gender, schoolClass, role: 'azubi',
-        yearGroup: new Date().getFullYear(),
+        yearGroup: null,
         username, passwordHash, salt,
         availability: buildAvailability(rng),
       }));

@@ -178,7 +178,20 @@ SSD.Storage = (function () {
     const defaults = SSD.Models.createDefaultAppData();
     data.school = data.school || defaults.school;
     data.dutyBlockConfig = data.dutyBlockConfig || defaults.dutyBlockConfig;
-    data.settings = Object.assign({}, defaults.settings, data.settings || {});
+
+    const storedSettings = data.settings || {};
+    data.settings = Object.assign({}, defaults.settings, storedSettings);
+    data.settings.weights = Object.assign({}, defaults.settings.weights, storedSettings.weights || {});
+    // Früherer Schalter "Gemischte Paare bevorzugen" lebt jetzt als Gewichtungsstufe weiter.
+    if (!storedSettings.weights && storedSettings.preferMixedGender === false) data.settings.weights.genderMix = 0;
+    delete data.settings.preferMixedGender;
+    if (!Array.isArray(data.settings.yearGroupRules)) data.settings.yearGroupRules = [];
+    if (!Array.isArray(data.settings.pairRules)) data.settings.pairRules = [];
+
+    data.students = Array.isArray(data.students) ? data.students : [];
+    data.students.forEach((s) => {
+      if (!Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = [];
+    });
     data.schedule = data.schedule || defaults.schedule;
     data.specialDays = data.specialDays || [];
     data.events = data.events || [];

@@ -45,6 +45,15 @@ SSD.Views.Setup = (function () {
       U.el('input', { class: 'input', id: 'setup-password-confirm', type: 'password', autocomplete: 'new-password' }),
     ]);
 
+    const codeInput = U.el('input', { class: 'input', id: 'setup-code', placeholder: 'z. B. SANI-7K3Q-P9XM', autocomplete: 'off', spellcheck: 'false', style: 'flex:1; min-width:0;' });
+    const generateCodeBtn = U.el('button', { type: 'button', class: 'btn btn--secondary', html: SSD.Icons.svg('refresh', { size: 15 }) }, ['Zufällig']);
+    generateCodeBtn.addEventListener('click', () => { codeInput.value = SSD.Auth.generateRegistrationCode(); });
+    const codeField = U.el('div', { class: 'field' }, [
+      U.el('label', { class: 'field__label' }, ['Schulcode für die Selbstregistrierung (optional)']),
+      U.el('div', { class: 'cluster gap-2', style: 'flex-wrap:nowrap;' }, [codeInput, generateCodeBtn]),
+      U.el('div', { class: 'field__hint' }, ['Wer sich mit diesem Code registriert, ist sofort freigeschaltet. Bitte notieren — der Code wird verschlüsselt gespeichert und später nicht mehr angezeigt.']),
+    ]);
+
     const demoCheckbox = U.el('input', { type: 'checkbox', id: 'setup-demo' });
     const demoField = U.el('label', { class: 'checkbox-row', style: 'margin-bottom:16px;' }, [
       demoCheckbox,
@@ -53,7 +62,7 @@ SSD.Views.Setup = (function () {
 
     const submitBtn = U.el('button', { class: 'btn btn--primary btn--block btn--lg' }, ['Einrichtung abschließen']);
 
-    const form = U.el('form', {}, [errorBox, schoolField, usernameField, passwordField, passwordConfirmField, demoField, submitBtn]);
+    const form = U.el('form', {}, [errorBox, schoolField, usernameField, passwordField, passwordConfirmField, codeField, demoField, submitBtn]);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errorBox.style.display = 'none';
@@ -62,12 +71,14 @@ SSD.Views.Setup = (function () {
       const username = U.qs('#setup-username', form).value.trim();
       const password = U.qs('#setup-password', form).value;
       const passwordConfirm = U.qs('#setup-password-confirm', form).value;
+      const registrationCode = codeInput.value.trim();
 
       const problems = [];
       if (!U.Validate.required(schoolName)) problems.push('Bitte geben Sie den Namen Ihrer Schule ein.');
       if (!U.Validate.usernameFormat(username)) problems.push('Der Benutzername ist ungültig (3–32 Zeichen, Buchstaben/Zahlen/._-).');
       if (!U.Validate.minLength(password, 6)) problems.push('Das Passwort muss mindestens 6 Zeichen lang sein.');
       if (password !== passwordConfirm) problems.push('Die Passwörter stimmen nicht überein.');
+      if (registrationCode && !SSD.Auth.isValidRegistrationCode(registrationCode)) problems.push(`Der Schulcode muss mindestens ${SSD.Auth.REGISTRATION_CODE_MIN_LENGTH} Zeichen haben (Leerzeichen/Bindestriche zählen nicht).`);
 
       if (problems.length) {
         errorBox.textContent = problems[0];
@@ -77,13 +88,14 @@ SSD.Views.Setup = (function () {
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Wird eingerichtet …';
-      await SSD.Auth.completeSetup({ schoolName, adminUsername: username, adminPassword: password });
+      await SSD.Auth.completeSetup({ schoolName, adminUsername: username, adminPassword: password, registrationCode });
+      const codeNote = registrationCode ? ` Schulcode für die Registrierung: ${registrationCode} — bitte notieren.` : '';
+      let message = `Willkommen, ${username}!${codeNote}`;
       if (demoCheckbox.checked) {
         await SSD.DemoData.seed();
-        SSD.Toast.success('Einrichtung abgeschlossen', `Willkommen, ${username}! Beispieldaten wurden geladen (Schüler-Startpasswort: "willkommen").`);
-      } else {
-        SSD.Toast.success('Einrichtung abgeschlossen', `Willkommen, ${username}!`);
+        message = `Willkommen, ${username}! Beispieldaten wurden geladen (Schüler-Startpasswort: "willkommen").${codeNote}`;
       }
+      SSD.Toast.show({ type: 'success', title: 'Einrichtung abgeschlossen', message, duration: registrationCode ? 15000 : undefined });
     });
 
     card.appendChild(form);

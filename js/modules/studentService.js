@@ -51,14 +51,14 @@ SSD.StudentService = (function () {
 
   /**
    * Selbstregistrierung durch Schüler:innen/Azubis über den Login-Bildschirm.
-   * Das neue Konto ist bewusst inaktiv, bis ein Administrator es freischaltet
-   * — so bleibt die Zusammensetzung des Teams unter Kontrolle, ohne dass der
-   * Administrator die Kontodaten selbst eintippen muss.
+   * Ohne Schulcode ist das neue Konto bewusst inaktiv, bis ein Administrator
+   * es freischaltet. Mit gültigem Schulcode (`autoApprove`, vorher per
+   * `SSD.Auth.verifyRegistrationCode` geprüft) ist es sofort aktiv.
    */
-  async function registerSelf({ firstName, lastName, username, password, role, gender, schoolClass, yearGroup }) {
+  async function registerSelf({ firstName, lastName, username, password, role, gender, schoolClass, yearGroup, autoApprove }) {
     const student = await create({
       firstName, lastName, username, password, role, gender, schoolClass, yearGroup,
-      active: false, pendingApproval: true,
+      active: !!autoApprove, pendingApproval: !autoApprove,
     });
     return student;
   }
@@ -97,7 +97,40 @@ SSD.StudentService = (function () {
         entry.studentIds = entry.studentIds.filter((sid) => sid !== id);
         if (entry.azubiId === id) entry.azubiId = null;
       });
+      draft.students.forEach((s) => {
+        if (Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = s.preferredPartnerIds.filter((pid) => pid !== id);
+      });
+      draft.settings.pairRules = (draft.settings.pairRules || []).filter((r) => r.a !== id && r.b !== id);
     });
+  }
+
+  /* ---------------------------------------------------------------------
+   * Wunschpartner:innen (nur Kategorie "student" — Azubis haben einen
+   * eigenen Einzelplatz und werden nicht gepaart)
+   * ------------------------------------------------------------------- */
+
+  const MAX_PREFERRED_PARTNERS = 3;
+
+  function isPairable(person) {
+    return !!(person && person.active && (person.role || 'student') === 'student');
+  }
+
+  /** Aktuell gültige Wunschpartner:innen einer Person (gelöschte/inaktive werden übersprungen). */
+  function getPreferredPartners(student) {
+    return (student.preferredPartnerIds || []).map(getById).filter(isPairable);
+  }
+
+  function setPreferredPartners(id, partnerIds) {
+    const student = getById(id);
+    if (!student || (student.role || 'student') !== 'student') return [];
+    const valid = Array.from(new Set(partnerIds))
+      .filter((pid) => pid !== id && isPairable(getById(pid)))
+      .slice(0, MAX_PREFERRED_PARTNERS);
+    SSD.Store.commit('Wunschpartner:innen geändert', (draft) => {
+      const target = draft.students.find((s) => s.id === id);
+      if (target) target.preferredPartnerIds = valid;
+    }, { trackHistory: false });
+    return valid;
   }
 
   function setActive(id, active) {
@@ -240,6 +273,7 @@ SSD.StudentService = (function () {
 
   return {
     getAll, getById, getActive, getActiveByRole, create, registerSelf, update, remove, setActive,
+    MAX_PREFERRED_PARTNERS, getPreferredPartners, setPreferredPartners,
     getLeadershipHolder, isTeamLead, setLeadershipRole, clearLeadershipRole,
     setAvailabilityCell, resetPassword, getAvailabilityWindow, getPendingApprovalCount,
     getDutiesForStudent, getDutySummary,

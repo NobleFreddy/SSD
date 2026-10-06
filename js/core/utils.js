@@ -73,6 +73,15 @@ SSD.Utils = (function () {
     return d;
   }
 
+  /**
+   * Kalenderjahr, in dem das laufende Schuljahr endet (ab August zählt das
+   * neue Schuljahr) — zugleich der früheste noch mögliche Abijahrgang.
+   */
+  function schoolYearEnd(date) {
+    const d = date || new Date();
+    return d.getMonth() >= 7 ? d.getFullYear() + 1 : d.getFullYear();
+  }
+
   /** Liefert den Montag der Woche, in der `date` liegt. */
   function getMondayOfWeek(date) {
     const d = new Date(date);
@@ -359,7 +368,7 @@ SSD.Utils = (function () {
   return {
     WEEKDAY_KEYS, WEEKDAY_LABELS, WEEKDAY_LABELS_SHORT,
     DUTY_BLOCKS, DUTY_BLOCK_KEYS, blockLabel,
-    toIsoDate, parseIsoDate, today, addDays, getMondayOfWeek, getIsoWeekNumber,
+    toIsoDate, parseIsoDate, today, addDays, schoolYearEnd, getMondayOfWeek, getIsoWeekNumber,
     formatDateShort, formatDateLong, formatDateMedium, formatDateTime,
     isSameDay, isWeekend, weekdayKeyFromDate, getWeekDates, dayDiff,
     generateId, createSeededRandom, shuffleInPlace,

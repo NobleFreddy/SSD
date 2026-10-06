@@ -1,3 +1,5 @@
 .claude/
+# Daten-Exporte enthalten personenbezogene Daten — nie committen
+dienstplan_export_*
 .DS_Store
 Thumbs.db

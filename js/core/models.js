@@ -82,7 +82,8 @@ SSD.Models = (function () {
         leadershipRole: null, // null | 'sanisprecher' | 'vize_sanisprecher'
         gender: 'd',
         schoolClass: '',
-        yearGroup: new Date().getFullYear(),
+        yearGroup: null, // Abijahrgang, z. B. 2028; null = nicht angegeben
+        preferredPartnerIds: [], // Wunschpartner:innen (max. 3, nur Kategorie "student")
         notes: '',
         adminMessage: '',
         maxDutiesPerWeek: null, // null = globalen Wert aus Settings verwenden
@@ -122,17 +123,46 @@ SSD.Models = (function () {
     return config;
   }
 
+  /**
+   * Gewichtungsstufen der weichen Verteilungskriterien (siehe SSD.Scheduler):
+   * 0 = Aus, 1 = Niedrig, 2 = Mittel, 3 = Hoch.
+   */
+  const WEIGHT_LEVELS = [
+    { value: 0, label: 'Aus' },
+    { value: 1, label: 'Niedrig' },
+    { value: 2, label: 'Mittel' },
+    { value: 3, label: 'Hoch' },
+  ];
+
+  function createDefaultWeights() {
+    return {
+      weeklyFairness: 3,
+      totalFairness: 2,
+      genderMix: 2,
+      partnerRotation: 2,
+      partnerWishes: 2,
+      yearGroups: 2,
+      consecutiveWeek: 2,
+      weekdaySpread: 2,
+    };
+  }
+
   function createDefaultSettings() {
     return {
       maxDutiesPerWeek: 2,
       maxDutiesTotal: null,
       minBreakBlocks: 1,
       studentsPerDuty: 2,
-      preferMixedGender: true,
       allowSameDayDuties: false,
       changeDeadlineDaysBeforeWeek: 2,
       autoSave: true,
       allowSelfRegistration: true,
+      weights: createDefaultWeights(),
+      yearGroupMode: 'none', // 'none' | 'mixed' | 'same'
+      yearGroupRules: [], // { id, a, b, type: 'prefer' | 'avoid' } — a/b = Abijahrgang
+      pairRules: [], // { id, a, b, type: 'prefer' | 'never' } — a/b = Personen-IDs
+      registrationCodeHash: null, // gesalzener Hash des Schulcodes (nie im Klartext)
+      registrationCodeSalt: null,
     };
   }
 
@@ -252,10 +282,12 @@ SSD.Models = (function () {
     GENDERS,
     ROLES,
     LEADERSHIP_ROLES,
+    WEIGHT_LEVELS,
     createEmptyAvailability,
     createStudent,
     createSpecialDay,
     createDefaultDutyBlockConfig,
+    createDefaultWeights,
     createDefaultSettings,
     createScheduleEntry,
     createEvent,

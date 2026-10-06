@@ -4,8 +4,10 @@
  * ============================================================================
  * Neben der Anmeldung bietet dieser Bildschirm auch die Selbstregistrierung
  * für Schüler:innen und Azubis an (sofern in den Einstellungen erlaubt):
- * Neue Konten werden inaktiv angelegt und müssen von einem Administrator
- * einmal freigeschaltet werden, bevor eine Anmeldung möglich ist.
+ * Ist ein Schulcode festgelegt, wird er abgefragt und das Konto mit dem
+ * richtigen Code sofort freigeschaltet (und angemeldet). Ohne Schulcode
+ * werden neue Konten inaktiv angelegt und müssen von einem Administrator
+ * freigeschaltet werden, bevor eine Anmeldung möglich ist.
  */
 window.SSD = window.SSD || {};
 SSD.Views = SSD.Views || {};
@@ -55,9 +57,9 @@ SSD.Views.Login = (function () {
 
     function renderForm() {
       formHost.innerHTML = '';
-      subtitleEl.textContent = mode === 'register'
-        ? 'Neues Konto erstellen — nach dem Absenden schaltet ein Administrator es frei.'
-        : 'Dienstplan-Verwaltung — bitte melden Sie sich an.';
+      if (mode !== 'register') subtitleEl.textContent = 'Dienstplan-Verwaltung — bitte melden Sie sich an.';
+      else if (SSD.Auth.hasRegistrationCode()) subtitleEl.textContent = 'Neues Konto erstellen — mit dem Schulcode Ihres Sanitätsdienstes ist es sofort freigeschaltet.';
+      else subtitleEl.textContent = 'Neues Konto erstellen — nach dem Absenden schaltet ein Administrator es frei.';
       formHost.appendChild(mode === 'register' ? buildRegisterForm() : buildLoginForm());
     }
 
@@ -128,7 +130,10 @@ SSD.Views.Login = (function () {
       const passwordConfirmInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'Passwort bestätigen' });
       const genderSelect = U.el('select', { class: 'select' }, SSD.Models.GENDERS.map((g) => U.el('option', { value: g.key, selected: g.key === 'd' }, [g.label])));
       const classInput = U.el('input', { class: 'input', placeholder: 'z. B. 10a' });
-      const yearInput = U.el('input', { class: 'input', type: 'number', value: new Date().getFullYear() });
+      const firstAbi = U.schoolYearEnd();
+      const yearInput = U.el('input', { class: 'input', type: 'number', min: String(firstAbi), max: String(firstAbi + 9), placeholder: `z. B. ${firstAbi + 2}` });
+      const hasCode = SSD.Auth.hasRegistrationCode();
+      const codeInput = U.el('input', { class: 'input', placeholder: 'z. B. SANI-7K3Q-P9XM', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' });
       const submitBtn = U.el('button', { class: 'btn btn--primary btn--block btn--lg', type: 'submit' }, ['Konto erstellen']);
 
       const form = U.el('form', {}, [
@@ -136,7 +141,8 @@ SSD.Views.Login = (function () {
         U.el('div', { class: 'grid grid-cols-2' }, [field('Vorname', firstNameInput), field('Nachname', lastNameInput)]),
         field('Benutzername', usernameInput),
         U.el('div', { class: 'grid grid-cols-2' }, [field('Passwort', passwordInput), field('Passwort bestätigen', passwordConfirmInput)]),
-        U.el('div', { class: 'grid grid-cols-3' }, [field('Geschlecht', genderSelect), field('Klasse', classInput), field('Jahrgang', yearInput)]),
+        U.el('div', { class: 'grid grid-cols-3' }, [field('Geschlecht', genderSelect), field('Klasse', classInput), field(role === 'azubi' ? 'Abijahrgang (optional)' : 'Abijahrgang', yearInput)]),
+        hasCode ? field('Schulcode', codeInput) : null,
         submitBtn,
       ]);
 
@@ -149,13 +155,14 @@ SSD.Views.Login = (function () {
         e.preventDefault();
         errorBox.style.display = 'none';
 
+        const yearValue = Number(yearInput.value);
         const data = {
           firstName: firstNameInput.value.trim(),
           lastName: lastNameInput.value.trim(),
           username: usernameInput.value.trim(),
           gender: genderSelect.value,
           schoolClass: classInput.value.trim(),
-          yearGroup: Number(yearInput.value) || new Date().getFullYear(),
+          yearGroup: yearValue || null,
           role,
         };
 
@@ -166,15 +173,29 @@ SSD.Views.Login = (function () {
         else if (SSD.Auth.isUsernameTaken(data.username)) problems.push('Dieser Benutzername ist bereits vergeben.');
         if (!U.Validate.minLength(passwordInput.value, 6)) problems.push('Das Passwort muss mindestens 6 Zeichen lang sein.');
         else if (passwordInput.value !== passwordConfirmInput.value) problems.push('Die Passwörter stimmen nicht überein.');
+        if (yearInput.value && (!Number.isInteger(yearValue) || yearValue < firstAbi || yearValue > firstAbi + 9)) problems.push(`Bitte einen Abijahrgang zwischen ${firstAbi} und ${firstAbi + 9} angeben.`);
+        else if (role !== 'azubi' && !yearInput.value) problems.push(`Bitte Ihren Abijahrgang angeben (Jahr des Abiturs, z. B. ${firstAbi + 2}).`);
+        if (hasCode && !codeInput.value.trim()) problems.push('Bitte den Schulcode eingeben, den Sie vom Sanitätsdienst erhalten haben.');
 
         if (problems.length) { showError(problems[0]); return; }
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Wird erstellt …';
-        await SSD.StudentService.registerSelf({ ...data, password: passwordInput.value });
+        if (hasCode && !(await SSD.Auth.verifyRegistrationCode(codeInput.value))) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Konto erstellen';
+          showError('Der Schulcode ist nicht korrekt. Bitte prüfen Sie die Eingabe.');
+          return;
+        }
+        const student = await SSD.StudentService.registerSelf({ ...data, password: passwordInput.value, autoApprove: hasCode });
         submitBtn.disabled = false;
         submitBtn.textContent = 'Konto erstellen';
 
+        if (hasCode) {
+          SSD.Auth.setSession({ role: student.role || 'student', studentId: student.id });
+          SSD.Toast.success('Willkommen!', 'Ihr Konto ist freigeschaltet — Sie sind jetzt angemeldet.');
+          return;
+        }
         mode = 'login';
         renderForm();
         SSD.Toast.success('Konto erstellt!', 'Ein Administrator muss Ihr Konto noch freischalten, bevor Sie sich anmelden können.');
