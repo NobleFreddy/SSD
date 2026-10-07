@@ -28,7 +28,11 @@ SSD.Views.AdminTeam = (function () {
 
   function tabBadge(key) {
     if (key === 'members') return SSD.StudentService.getPendingApprovalCount();
-    if (key === 'meetings') return SSD.MeetingsService.getPast().filter((m) => !m.attendanceTaken).length;
+    if (key === 'meetings') {
+      // Nur jüngere Treffen ohne erfasste Anwesenheit — sehr alte sollen nicht ewig mahnen.
+      const since = U.toIsoDate(U.addDays(U.today(), -30));
+      return SSD.MeetingsService.getPast().filter((m) => !m.attendanceTaken && m.date >= since).length;
+    }
     return 0;
   }
 

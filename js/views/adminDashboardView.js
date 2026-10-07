@@ -118,9 +118,7 @@ SSD.Views.AdminDashboard = (function () {
 
     const openRequestCount = SSD.SelfServiceService.getOpenRequestCount();
     if (openRequestCount > 0) {
-      const todayRequestCount = state.schedule.entries
-        .filter((e) => e.date === todayIso)
-        .reduce((sum, e) => sum + (e.substitutionRequests || []).length, 0);
+      const todayRequestCount = SSD.SelfServiceService.getOpenRequestCount(todayIso);
       const requestNotice = U.el('div', { class: 'notice-box', style: 'cursor:pointer;' }, [
         U.el('span', { html: SSD.Icons.svg('handRaised', { size: 20 }) }),
         U.el('div', {}, [

@@ -79,8 +79,9 @@ SSD.ScheduleTable = (function () {
               html: SSD.Icons.svg('userSearch', { size: 12 }),
             }));
           }
-          if (entry?.substitutionRequests?.length) {
-            const names = entry.substitutionRequests.map((r) => SSD.SubstitutionService.studentName(r.studentId)).join(', ');
+          const openRequests = entry ? SSD.SelfServiceService.activeRequestsOf(entry) : [];
+          if (openRequests.length) {
+            const names = openRequests.map((r) => SSD.SubstitutionService.studentName(r.studentId)).join(', ');
             cell.appendChild(U.el('div', {
               style: 'position:absolute; top:6px; left:22px; color:var(--color-warning-600); display:flex;',
               'data-tooltip': `Vertretung gesucht: ${names}`,

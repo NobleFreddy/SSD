@@ -58,9 +58,18 @@ SSD.Router = (function () {
     return '/student';
   }
 
+  const KNOWN_ROLES = ['admin', 'student', 'azubi'];
+
   function render() {
     const path = currentHashPath();
-    const session = SSD.Auth.getSession();
+    let session = SSD.Auth.getSession();
+    // Veraltete Sitzung verwerfen: vor/nach einer (Neu-)Einrichtung gibt es niemanden,
+    // der angemeldet sein könnte, und eine unbekannte Rolle passt auf keine Seite.
+    // Sonst leiten "Login → Setup" bzw. "geschützte Seite → Startseite" endlos im Kreis.
+    if (session && (!SSD.Store.isSetupComplete() || !KNOWN_ROLES.includes(session.role))) {
+      SSD.Auth.clearSession();
+      session = null;
+    }
     const matched = matchRoute(path);
 
     if (!matched) {

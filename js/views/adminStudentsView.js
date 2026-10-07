@@ -175,8 +175,9 @@ SSD.Views.AdminStudents = (function () {
 
     let created = 0, skipped = 0;
     for (const row of rows) {
-      const username = row.username || U.slugifyUsername(`${row.firstName}.${row.lastName}`);
-      if (!username || SSD.Auth.isUsernameTaken(username)) { skipped++; continue; }
+      const username = (row.username || U.slugifyUsername(`${row.firstName}.${row.lastName}`).slice(0, 32)).trim();
+      // Gleiche Regeln wie beim Anlegen per Formular — sonst entstünden Konten, mit denen sich niemand anmelden kann.
+      if (!U.Validate.usernameFormat(username) || SSD.Auth.isUsernameTaken(username)) { skipped++; continue; }
       await SSD.StudentService.create({ ...row, username, password: row.password || username });
       created++;
     }

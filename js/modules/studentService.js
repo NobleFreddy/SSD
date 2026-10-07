@@ -94,6 +94,11 @@ SSD.StudentService = (function () {
     draft.schedule.entries.forEach((entry) => {
       entry.studentIds = entry.studentIds.filter((sid) => sid !== id);
       if (entry.azubiId === id) entry.azubiId = null;
+      if (entry.substitutionRequests) entry.substitutionRequests = entry.substitutionRequests.filter((r) => r.studentId !== id);
+    });
+    // Gelöschte Personen belegen keine Veranstaltungsplätze mehr.
+    (draft.events || []).forEach((event) => {
+      event.participantIds = (event.participantIds || []).filter((pid) => pid !== id);
     });
     draft.students.forEach((s) => {
       if (Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = s.preferredPartnerIds.filter((pid) => pid !== id);
@@ -316,7 +321,9 @@ SSD.StudentService = (function () {
     const ref = referenceDate || U.today();
     const thisMonday = U.getMondayOfWeek(ref);
     const nextMonday = U.addDays(thisMonday, 7);
-    const lockDate = U.addDays(nextMonday, -settings.changeDeadlineDaysBeforeWeek);
+    // Höchstens 6 Tage: Bei 7+ läge die Sperre vor dem laufenden Montag — nie änderbar.
+    const deadlineDays = U.clamp(Number(settings.changeDeadlineDaysBeforeWeek) || 0, 0, 6);
+    const lockDate = U.addDays(nextMonday, -deadlineDays);
     const isOpen = ref < lockDate;
     return {
       isOpen,

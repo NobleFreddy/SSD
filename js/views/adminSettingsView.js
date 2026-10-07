@@ -44,13 +44,18 @@ SSD.Views.AdminSettings = (function () {
 
   function buildGeneralCard() {
     const s = SSD.SettingsService.get();
-    const deadlineInput = U.el('input', { class: 'input', type: 'number', min: '0', value: s.changeDeadlineDaysBeforeWeek });
+    const deadlineInput = U.el('input', { class: 'input', type: 'number', min: '0', max: '6', value: Math.min(6, s.changeDeadlineDaysBeforeWeek) });
 
     function commit(patch, message) {
       SSD.SettingsService.update(patch);
       SSD.Toast.success('Gespeichert', message);
     }
-    deadlineInput.addEventListener('change', () => commit({ changeDeadlineDaysBeforeWeek: Math.max(0, Number(deadlineInput.value) || 0) }, 'Änderungsfrist aktualisiert.'));
+    deadlineInput.addEventListener('change', () => {
+      // Ab 7 Tagen läge die Sperre vor dem Montag der laufenden Woche — die Verfügbarkeit wäre nie änderbar.
+      const days = U.clamp(Math.round(Number(deadlineInput.value) || 0), 0, 6);
+      deadlineInput.value = String(days);
+      commit({ changeDeadlineDaysBeforeWeek: days }, 'Änderungsfrist aktualisiert.');
+    });
 
     const toDistribution = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('sliders', { size: 14 }) }, ['Zur Verteilung']);
     toDistribution.addEventListener('click', () => SSD.Router.navigate('/admin/distribution'));
@@ -58,7 +63,7 @@ SSD.Views.AdminSettings = (function () {
     return U.el('div', { class: 'card' }, [
       U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Allgemein'])]),
       U.el('div', { class: 'card__body stack gap-2' }, [
-        field('Änderungsfrist für Schüler:innen (Tage vor Wochenbeginn)', deadlineInput, 'Ab diesem Zeitpunkt ist die Verfügbarkeit für die Folgewoche gesperrt.'),
+        field('Änderungsfrist für Schüler:innen (Tage vor Wochenbeginn)', deadlineInput, 'Ab diesem Zeitpunkt ist die Verfügbarkeit für die Folgewoche gesperrt (0–6 Tage; mit dem neuen Wochenbeginn ist sie wieder änderbar).'),
         U.el('hr', { class: 'divider' }),
         switchRow('Automatisches Speichern', 'Änderungen sofort für alle sichtbar speichern (empfohlen). Bei Deaktivierung erscheint oben ein manueller Speichern-Button.', s.autoSave, (val) => commit({ autoSave: val }, 'Einstellung aktualisiert.')),
         U.el('hr', { class: 'divider' }),

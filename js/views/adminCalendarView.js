@@ -43,6 +43,12 @@ SSD.Views.AdminCalendar = (function () {
       label: isEdit ? 'Speichern' : 'Anlegen', variant: 'primary', closeOnClick: false,
       onClick: () => {
         errorBox.style.display = 'none';
+        if (!startInput.value || !endInput.value) {
+          // Ein leeres Startdatum würde sonst jeden Tag bis zum Enddatum sperren.
+          errorBox.textContent = 'Bitte Start- und Enddatum angeben.';
+          errorBox.style.display = 'flex';
+          return;
+        }
         if (endInput.value < startInput.value) {
           errorBox.textContent = 'Das Enddatum darf nicht vor dem Startdatum liegen.';
           errorBox.style.display = 'flex';

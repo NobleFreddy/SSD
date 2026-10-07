@@ -112,19 +112,30 @@ SSD.ImportExport = (function () {
     if (!rows.length) return [];
     const header = rows[0].map((h) => h.trim().toLowerCase());
     const idx = (name) => header.indexOf(name.toLowerCase());
+    // Felder immer ohne Leerzeichen am Rand — aus Excel kommen z. B. "anna.m " oder " 10b" vor;
+    // ein Benutzername mit Leerzeichen am Ende ließe sich sonst nie anmelden.
+    const cell = (row, name) => (idx(name) >= 0 ? String(row[idx(name)] ?? '').trim() : '');
+    const genderKey = (value) => {
+      const first = value.toLowerCase().charAt(0);
+      return ['w', 'm', 'd'].includes(first) ? first : 'd';
+    };
+    const positiveIntOrNull = (value) => {
+      const n = Number(value);
+      return value !== '' && Number.isInteger(n) && n >= 0 ? n : null;
+    };
 
     return rows.slice(1).map((row) => ({
-      firstName: row[idx('Vorname')] || '',
-      lastName: row[idx('Nachname')] || '',
-      username: row[idx('Benutzername')] || '',
-      role: /azubi/i.test(row[idx('Kategorie')] || '') ? 'azubi' : 'student',
-      gender: (row[idx('Geschlecht')] || 'd').trim().toLowerCase().charAt(0) || 'd',
-      schoolClass: row[idx('Klasse')] || '',
-      yearGroup: Number(row[idx('Jahrgang')]) || null,
-      maxDutiesPerWeek: row[idx('MaxDiensteProWoche')] ? Number(row[idx('MaxDiensteProWoche')]) : null,
-      active: idx('Aktiv') >= 0 ? !/^(nein|false|0)$/i.test((row[idx('Aktiv')] || '').trim()) : true,
-      notes: row[idx('Bemerkungen')] || '',
-      password: idx('Passwort') >= 0 ? row[idx('Passwort')] : '',
+      firstName: cell(row, 'Vorname'),
+      lastName: cell(row, 'Nachname'),
+      username: cell(row, 'Benutzername'),
+      role: /azubi/i.test(cell(row, 'Kategorie')) ? 'azubi' : 'student',
+      gender: genderKey(cell(row, 'Geschlecht')),
+      schoolClass: cell(row, 'Klasse'),
+      yearGroup: positiveIntOrNull(cell(row, 'Jahrgang')) || null,
+      maxDutiesPerWeek: positiveIntOrNull(cell(row, 'MaxDiensteProWoche')),
+      active: idx('Aktiv') >= 0 ? !/^(nein|false|0)$/i.test(cell(row, 'Aktiv')) : true,
+      notes: cell(row, 'Bemerkungen'),
+      password: cell(row, 'Passwort'),
     })).filter((s) => s.firstName || s.lastName);
   }
 
@@ -132,19 +143,33 @@ SSD.ImportExport = (function () {
    * CSV — Dienstplan
    * ------------------------------------------------------------------- */
 
-  function exportScheduleCsv(entries) {
-    const rows = [['Datum', 'Wochentag', 'Block', 'Schüler:in 1', 'Schüler:in 2']];
-    entries
+  /**
+   * Gemeinsame Tabelle für CSV/Excel: so viele Schüler:innen-Spalten wie der
+   * am stärksten besetzte Dienst (mind. 2) plus Azubi — bei "3 Personen pro
+   * Dienst" ging die dritte Person sonst im Export verloren.
+   */
+  function scheduleTable(entries) {
+    const personName = (id) => {
+      if (!id) return '';
+      const s = SSD.StudentService.getById(id);
+      return s ? SSD.StudentService.fullName(s) : '(gelöscht)';
+    };
+    const seatCount = Math.max(2, ...entries.map((e) => e.studentIds.length));
+    const header = ['Datum', 'Wochentag', 'Block', ...Array.from({ length: seatCount }, (_, i) => `Schüler:in ${i + 1}`), 'Azubi'];
+    const rows = entries
       .slice()
       .sort((a, b) => (a.date + a.block).localeCompare(b.date + b.block))
-      .forEach((entry) => {
-        const names = entry.studentIds.map((id) => {
-          const s = SSD.StudentService.getById(id);
-          return s ? SSD.StudentService.fullName(s) : '(gelöscht)';
-        });
-        rows.push([entry.date, U.WEEKDAY_LABELS[entry.weekday], U.blockLabel(entry.block), names[0] || '', names[1] || '']);
-      });
-    U.downloadBlob(`dienstplan_export_${U.toIsoDate(U.today())}.csv`, buildCsv(rows), 'text/csv;charset=utf-8');
+      .map((entry) => [
+        entry.date, U.WEEKDAY_LABELS[entry.weekday], U.blockLabel(entry.block),
+        ...Array.from({ length: seatCount }, (_, i) => personName(entry.studentIds[i])),
+        personName(entry.azubiId),
+      ]);
+    return { header, rows };
+  }
+
+  function exportScheduleCsv(entries) {
+    const { header, rows } = scheduleTable(entries);
+    U.downloadBlob(`dienstplan_export_${U.toIsoDate(U.today())}.csv`, buildCsv([header, ...rows]), 'text/csv;charset=utf-8');
   }
 
   /* ---------------------------------------------------------------------
@@ -176,22 +201,8 @@ SSD.ImportExport = (function () {
   }
 
   function exportScheduleExcel(entries) {
-    const rows = entries
-      .slice()
-      .sort((a, b) => (a.date + a.block).localeCompare(b.date + b.block))
-      .map((entry) => {
-        const names = entry.studentIds.map((id) => {
-          const s = SSD.StudentService.getById(id);
-          return s ? SSD.StudentService.fullName(s) : '(gelöscht)';
-        });
-        return [entry.date, U.WEEKDAY_LABELS[entry.weekday], U.blockLabel(entry.block), names[0] || '', names[1] || ''];
-      });
-    downloadHtmlAsExcel(
-      `dienstplan_export_${U.toIsoDate(U.today())}.xls`,
-      'Dienstplan — Schulsanitätsdienst',
-      ['Datum', 'Wochentag', 'Block', 'Schüler:in 1', 'Schüler:in 2'],
-      rows
-    );
+    const { header, rows } = scheduleTable(entries);
+    downloadHtmlAsExcel(`dienstplan_export_${U.toIsoDate(U.today())}.xls`, 'Dienstplan — Schulsanitätsdienst', header, rows);
   }
 
   /* ---------------------------------------------------------------------

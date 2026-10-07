@@ -82,6 +82,9 @@ SSD.Views.AdminSchedule = (function () {
       entry.studentIds = studentIds;
       if (azubiId !== undefined) entry.azubiId = azubiId || null;
       entry.isManual = true;
+      // Wer nicht mehr eingeteilt ist, braucht auch keine Vertretung mehr.
+      entry.substitutionRequests = (entry.substitutionRequests || [])
+        .filter((r) => entry.studentIds.includes(r.studentId) || entry.azubiId === r.studentId);
       notifyManualChange(draft, entry, before);
     });
     SSD.Toast.success('Gespeichert', 'Der Dienstplan wurde aktualisiert.');
@@ -117,8 +120,11 @@ SSD.Views.AdminSchedule = (function () {
       ]);
     }
 
-    const select1 = buildSelect(students, entry?.studentIds[0]);
-    const select2 = buildSelect(students, entry?.studentIds[1]);
+    // So viele Plätze wie unter "Verteilung" eingestellt (mind. 2) — und nie weniger als aktuell
+    // besetzt, sonst würde "Speichern" weitere eingeteilte Personen stillschweigend entfernen.
+    const seatCount = Math.max(2, settings.studentsPerDuty || 2, entry ? entry.studentIds.length : 0);
+    const seatSelects = Array.from({ length: seatCount }, (_, i) => buildSelect(students, entry?.studentIds[i]));
+    const selectedIds = () => seatSelects.map((sel) => sel.value).filter(Boolean);
     const azubiSelect = buildSelect(azubis, entry?.azubiId, '— Kein Azubi eingeteilt —');
     const warnBox = U.el('div', { class: 'stack gap-1' });
     const hasStaleOccupant = !!entry && entry.studentIds.some((id) => {
@@ -131,11 +137,15 @@ SSD.Views.AdminSchedule = (function () {
       if (hasStaleOccupant) {
         warnBox.appendChild(warningLine('Mindestens eine bereits eingeteilte Person ist inzwischen deaktiviert — bitte zunächst manuell bereinigen, bevor automatisch aufgefüllt werden kann.'));
       }
-      const ids = [select1.value, select2.value].filter(Boolean);
-      if (ids.length === 2 && ids[0] === ids[1]) {
+      const ids = selectedIds();
+      if (new Set(ids).size !== ids.length) {
         warnBox.appendChild(warningLine('Dieselbe Person kann nicht zweimal im selben Dienst eingeteilt werden.'));
-      } else if (ids.length === 2 && SSD.DistributionService.isNeverPair(ids[0], ids[1])) {
-        warnBox.appendChild(warningLine(`${ids.map((id) => SSD.StudentService.fullName(SSD.StudentService.getById(id))).join(' und ')} sollen laut Paar-Regel nie zusammen eingeteilt werden.`));
+      } else {
+        ids.forEach((a, i) => ids.slice(i + 1).forEach((b) => {
+          if (SSD.DistributionService.isNeverPair(a, b)) {
+            warnBox.appendChild(warningLine(`${[a, b].map((id) => SSD.StudentService.fullName(SSD.StudentService.getById(id))).join(' und ')} sollen laut Paar-Regel nie zusammen eingeteilt werden.`));
+          }
+        }));
       }
       ids.forEach((id) => {
         const conflicts = getConflicts(id, dateIso, weekday, block);
@@ -148,8 +158,7 @@ SSD.Views.AdminSchedule = (function () {
         azubiConflicts.forEach((msg) => warnBox.appendChild(warningLine(`${SSD.StudentService.fullName(azubi)}: ${msg}`)));
       }
     }
-    select1.addEventListener('change', refreshWarnings);
-    select2.addEventListener('change', refreshWarnings);
+    seatSelects.forEach((sel) => sel.addEventListener('change', refreshWarnings));
     azubiSelect.addEventListener('change', refreshWarnings);
     refreshWarnings();
 
@@ -173,10 +182,7 @@ SSD.Views.AdminSchedule = (function () {
 
     const body = U.el('div', { class: 'stack gap-4' }, [
       U.el('p', { class: 'text-secondary', style: 'margin:0;' }, [`${U.formatDateLong(U.parseIsoDate(dateIso))} · ${U.blockLabel(block)}`]),
-      U.el('div', { class: 'grid grid-cols-2' }, [
-        fieldWithAbsenceAction('Schüler:in 1', select1, entry?.studentIds[0]),
-        fieldWithAbsenceAction('Schüler:in 2', select2, entry?.studentIds[1]),
-      ]),
+      U.el('div', { class: 'grid grid-cols-2' }, seatSelects.map((sel, i) => fieldWithAbsenceAction(`Schüler:in ${i + 1}`, sel, entry?.studentIds[i]))),
       U.el('hr', { class: 'divider' }),
       fieldWithAbsenceAction('Azubi (optional, dritte Person)', azubiSelect, entry?.azubiId),
       warnBox,
@@ -207,7 +213,7 @@ SSD.Views.AdminSchedule = (function () {
     footerButtons.push({
       label: 'Speichern', variant: 'primary', closeOnClick: false,
       onClick: async () => {
-        const ids = [select1.value, select2.value].filter(Boolean);
+        const ids = selectedIds();
         if (new Set(ids).size !== ids.length) {
           SSD.Toast.error('Ungültige Auswahl', 'Dieselbe Person wurde zweimal ausgewählt.');
           return;

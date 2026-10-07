@@ -290,6 +290,8 @@ SSD.SubstitutionFlow = (function () {
             errorBox.style.display = 'none';
             const ids = picker.getSelectedIds();
             if (!ids.length) { errorBox.textContent = 'Bitte mindestens eine Person auswählen.'; errorBox.style.display = 'flex'; return; }
+            // Ohne Startdatum würden auch alle vergangenen Dienste "vertreten".
+            if (!startInput.value || !endInput.value) { errorBox.textContent = 'Bitte einen Zeitraum (von/bis) angeben.'; errorBox.style.display = 'flex'; return; }
             if (endInput.value < startInput.value) { errorBox.textContent = 'Das Enddatum darf nicht vor dem Startdatum liegen.'; errorBox.style.display = 'flex'; return; }
             const reasonLabel = SSD.SubstitutionService.ABSENCE_REASONS.find((r) => r.key === reasonSelect.value)?.label;
             launchSubstitutionFlow(ids, startInput.value, endInput.value, reasonLabel, cfg.options);

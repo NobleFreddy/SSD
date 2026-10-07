@@ -65,6 +65,11 @@ SSD.Store = (function () {
     }
     state = newData;
     SSD.Storage.setKnownVersion(newVersion);
+    // Rückgängig/Wiederholen arbeitet mit vollständigen Schnappschüssen: Nach einer
+    // fremden Änderung würde ein älterer Schnappschuss sie beim Speichern überschreiben
+    // (z. B. eine gerade eingegangene Krankmeldung). Daher beginnt der Verlauf neu.
+    undoStack = [];
+    redoStack = [];
     SSD.EventBus.emit('store:changed', { label: 'Von anderem Gerät aktualisiert', remote: true });
   }
 

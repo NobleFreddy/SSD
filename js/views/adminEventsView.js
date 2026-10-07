@@ -84,8 +84,14 @@ SSD.Views.AdminEvents = (function () {
           startTime: startInput.value,
           endTime: endInput.value,
           location: locationInput.value.trim(),
-          capacity: capacityInput.value ? U.clamp(Number(capacityInput.value), 1, 9999) : null,
+          capacity: capacityInput.value ? U.clamp(Math.round(Number(capacityInput.value)) || 1, 1, 9999) : null,
         };
+        const signedUp = isEdit ? (SSD.EventsService.getById(existing.id)?.participantIds || []).length : 0;
+        if (data.capacity != null && data.capacity < signedUp) {
+          errorBox.textContent = `Es sind bereits ${signedUp} Personen angemeldet — die Teilnehmerzahl kann nicht darunter liegen.`;
+          errorBox.style.display = 'flex';
+          return;
+        }
         if (isEdit) SSD.EventsService.update(existing.id, data);
         else SSD.EventsService.create(data);
         SSD.Toast.success('Gespeichert', 'Veranstaltung aktualisiert.');

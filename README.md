@@ -273,6 +273,10 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
   dem vollständigen Stand nachgespeichert, statt fälschlich einen Konflikt
   mit sich selbst zu melden; Realtime-Updates, die während des eigenen
   Speicherns eintreffen, werden erst danach ausgewertet.
+- **Rückgängig/Wiederholen** gilt nur für die eigenen Änderungen seit der
+  letzten Änderung von einem anderen Gerät: Trifft eine fremde Änderung ein
+  (z. B. eine Krankmeldung), beginnt der Verlauf neu — ein älterer
+  Schnappschuss würde sie sonst beim Speichern überschreiben.
 - **Sicherheit des Zugriffs:** Die Datenbankzeile ist per Row-Level-Security
   auf Lesen/Aktualisieren beschränkt (kein Anlegen/Löschen über den Client).
   Der inhaltliche Zugriffsschutz (wer sich anmelden und was sehen darf)

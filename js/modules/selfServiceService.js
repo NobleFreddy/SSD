@@ -359,18 +359,28 @@ SSD.SelfServiceService = (function () {
     return (entry.substitutionRequests || []).some((r) => r.studentId === personId);
   }
 
-  /** Gesamtzahl noch unbeantworteter Vertretungsanfragen in der Zukunft (für den Admin-Hinweis). */
-  function getOpenRequestCount() {
+  /**
+   * Nur Anfragen von Personen, die noch in diesem Dienst eingeteilt sind.
+   * Wurde jemand inzwischen anders ersetzt (Vertretungsassistent, manuelle
+   * Bearbeitung, Löschen), gilt die Anfrage als erledigt — auch bei
+   * Altbeständen, in denen sie noch im Eintrag steht.
+   */
+  function activeRequestsOf(entry) {
+    return (entry.substitutionRequests || []).filter((r) => isAssigned(r.studentId, entry));
+  }
+
+  /** Gesamtzahl noch unbeantworteter Vertretungsanfragen ab heute (für den Admin-Hinweis). */
+  function getOpenRequestCount(onlyDateIso) {
     const todayIso = U.toIsoDate(U.today());
     return SSD.Store.getState().schedule.entries
-      .filter((e) => e.date >= todayIso)
-      .reduce((sum, e) => sum + (e.substitutionRequests || []).length, 0);
+      .filter((e) => (onlyDateIso ? e.date === onlyDateIso : e.date >= todayIso))
+      .reduce((sum, e) => sum + activeRequestsOf(e).length, 0);
   }
 
   return {
     getOpenSeats, getOpenSeatsForPerson, canClaim, claimSeat,
     requestSubstitution, requestSubstitutions, cancelSubstitutionRequest, hasOpenRequest,
-    getUpcomingDutiesOf, getOpenRequestCount, isAutoSubstitutionEnabled,
+    getUpcomingDutiesOf, getOpenRequestCount, activeRequestsOf, isAutoSubstitutionEnabled,
     getUpcomingAutoSubstitutions, getUnseenAutoSubstitutions, acknowledgeAutoSubstitutions, getCoveredDutiesOf, latestLogFor,
   };
 })();

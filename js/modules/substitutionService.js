@@ -425,6 +425,8 @@ SSD.SubstitutionService = (function () {
           else entry.studentIds.splice(idx, 1);
         }
         entry.isManual = true;
+        // Eine offene "Vertretung gesucht"-Anfrage der ersetzten Person ist damit erledigt.
+        entry.substitutionRequests = (entry.substitutionRequests || []).filter((r) => r.studentId !== choice.absentStudentId);
         entry.substitutionLog = entry.substitutionLog || [];
         entry.substitutionLog.push({
           originalStudentId: choice.absentStudentId,

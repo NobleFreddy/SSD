@@ -97,6 +97,25 @@ SSD.Dialog = (function () {
       let resolved = false;
       const resolveOnce = (val) => { if (!resolved) { resolved = true; resolve(val); } };
 
+      // Eine Rückfrage legt sich über einen bereits offenen Dialog, statt ihn zu schließen:
+      // "Abbrechen" führt so zurück zum Formular samt Eingaben. Nach "Ja" ist wieder der
+      // ursprüngliche Dialog aktiv — der Aufrufer schließt ihn wie gewohnt mit handle.close().
+      const parent = activeOverlay;
+      const parentKeyHandler = activeKeyHandler;
+      if (parent) {
+        if (parentKeyHandler) document.removeEventListener('keydown', parentKeyHandler);
+        activeOverlay = null;
+        activeKeyHandler = null;
+      }
+      const restoreParent = () => {
+        if (!parent || !parent.el.isConnected) return;
+        activeOverlay = parent;
+        if (parentKeyHandler) {
+          activeKeyHandler = parentKeyHandler;
+          document.addEventListener('keydown', parentKeyHandler);
+        }
+      };
+
       const body = U.el('div', {}, [
         U.el('div', {
           class: 'modal__icon-badge',
@@ -111,7 +130,7 @@ SSD.Dialog = (function () {
         body,
         narrow: true,
         closeOnOverlayClick: false,
-        onClose: () => resolveOnce(false),
+        onClose: () => { resolveOnce(false); restoreParent(); },
         footerButtons: [
           { label: opts.cancelLabel || 'Abbrechen', variant: 'secondary', onClick: () => resolveOnce(false) },
           { label: opts.confirmLabel || 'Bestätigen', variant: opts.danger ? 'danger' : 'primary', autofocus: true, onClick: () => resolveOnce(true) },

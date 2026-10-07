@@ -77,6 +77,11 @@ SSD.Auth = (function () {
     SSD.EventBus.emit('auth:changed', null);
   }
 
+  /** Verwirft eine veraltete Sitzung still (ohne 'auth:changed') — für den Router während des Seitenwechsels. */
+  function clearSession() {
+    try { sessionStorage.removeItem(SESSION_KEY); } catch (err) { /* ignore */ }
+  }
+
   function getCurrentStudent() {
     const session = getSession();
     if (!session || (session.role !== 'student' && session.role !== 'azubi')) return null;
@@ -216,6 +221,9 @@ SSD.Auth = (function () {
     const uname = String(username).trim().toLowerCase();
     const student = state.students.find((s) => s.username.toLowerCase() === uname);
     if (!student) return { ok: false, error: 'Benutzername oder Passwort ist falsch.' };
+    if (!student.active && student.pendingApproval) {
+      return { ok: false, error: 'Ihr Konto wartet noch auf die Freischaltung durch die Administration oder die Sanisprecher:innen.' };
+    }
     if (!student.active) return { ok: false, error: 'Dieses Konto ist deaktiviert. Bitte an den Administrator wenden.' };
     const valid = await verifyPassword(password, student.salt, student.passwordHash);
     if (!valid) return { ok: false, error: 'Benutzername oder Passwort ist falsch.' };
@@ -254,7 +262,7 @@ SSD.Auth = (function () {
 
   return {
     generateSalt, hashPassword, verifyPassword,
-    getSession, setSession, logout, getCurrentStudent,
+    getSession, setSession, logout, clearSession, getCurrentStudent,
     isAdminSession, canCoordinate, currentPersonId, canManageItem,
     completeSetup, loginAdmin, loginStudent,
     setStudentPassword, changeAdminCredentials, isUsernameTaken,
