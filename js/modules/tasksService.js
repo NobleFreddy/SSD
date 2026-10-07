@@ -2,12 +2,13 @@
  * ============================================================================
  * SSD.TasksService — Sonstige Aufgaben (offener Pool)
  * ============================================================================
- * Vom Administrator erstellte Aufgaben abseits des regulären Dienstplans
- * (z. B. Material sichten, Erste-Hilfe-Koffer auffüllen). Bewusst ein
- * offener Pool ohne feste Zuweisung: sichtbar für alle aktiven Sanis/Azubis,
- * wer sie erledigt hat, markiert sie selbst als "Erledigt" — analog zur
- * freiwilligen Anmeldung bei Veranstaltungen (SSD.EventsService), nur ohne
- * Kapazitätsgrenze.
+ * Aufgaben abseits des regulären Dienstplans (z. B. Material sichten,
+ * Erste-Hilfe-Koffer auffüllen), angelegt vom Administrator oder von
+ * Sanisprecher:innen. Bewusst ein offener Pool ohne feste Zuweisung: sichtbar
+ * für alle aktiven Sanis/Azubis, wer sie erledigt hat, markiert sie selbst
+ * als "Erledigt" — analog zur freiwilligen Anmeldung bei Veranstaltungen
+ * (SSD.EventsService), nur ohne Kapazitätsgrenze. Bearbeiten/Löschen darf
+ * der Administrator alle Aufgaben, Sanisprecher:innen nur selbst angelegte.
  */
 window.SSD = window.SSD || {};
 
@@ -31,8 +32,14 @@ SSD.TasksService = (function () {
     return SSD.Store.getState().tasks.find((t) => t.id === id) || null;
   }
 
+  /** Darf die angemeldete Person diese Aufgabe bearbeiten/löschen? (siehe `SSD.Auth.canManageItem`) */
+  function canManage(task) {
+    return SSD.Auth.canManageItem(task);
+  }
+
   function create(data) {
-    const task = SSD.Models.createTask(data);
+    if (!SSD.Auth.canCoordinate()) throw new Error('Dafür fehlt die Berechtigung.');
+    const task = SSD.Models.createTask(Object.assign({}, data, { createdBy: SSD.Auth.currentPersonId() }));
     SSD.Store.commit(`Aufgabe "${task.title}" angelegt`, (draft) => {
       draft.tasks.push(task);
       const due = task.dueDate ? ` (fällig ${SSD.Utils.formatDateMedium(SSD.Utils.parseIsoDate(task.dueDate))})` : '';
@@ -42,6 +49,7 @@ SSD.TasksService = (function () {
   }
 
   function update(id, patch) {
+    if (!canManage(getById(id))) throw new Error('Diese Aufgabe darf nur die Person bearbeiten, die sie angelegt hat, oder der Administrator.');
     SSD.Store.commit('Aufgabe bearbeitet', (draft) => {
       const task = draft.tasks.find((t) => t.id === id);
       if (task) Object.assign(task, patch);
@@ -50,6 +58,7 @@ SSD.TasksService = (function () {
 
   function remove(id) {
     const task = getById(id);
+    if (!canManage(task)) throw new Error('Diese Aufgabe darf nur die Person löschen, die sie angelegt hat, oder der Administrator.');
     SSD.Store.commit(`Aufgabe "${task ? task.title : ''}" gelöscht`, (draft) => {
       draft.tasks = draft.tasks.filter((t) => t.id !== id);
     });
@@ -79,5 +88,5 @@ SSD.TasksService = (function () {
     });
   }
 
-  return { getAll, getOpen, getById, create, update, remove, markDone, reopen };
+  return { getAll, getOpen, getById, canManage, create, update, remove, markDone, reopen };
 })();

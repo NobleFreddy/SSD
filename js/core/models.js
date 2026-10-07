@@ -91,6 +91,7 @@ SSD.Models = (function () {
         pendingApproval: false, // true = Selbstregistrierung, noch nicht vom Administrator geprüft
         availability: createEmptyAvailability(),
         availabilityUpdatedAt: now,
+        availabilityReminderAt: null, // Erinnerung durch Admin/Team-Leitung — Hinweis bis zur nächsten Änderung/Bestätigung
         dutyLog: [], // { date, block, partnerId } — Verlauf aller je zugewiesenen Dienste
         createdAt: now,
       },
@@ -157,6 +158,9 @@ SSD.Models = (function () {
       changeDeadlineDaysBeforeWeek: 2,
       autoSave: true,
       allowSelfRegistration: true,
+      // Meldet sich jemand selbst ab ("Ich falle aus"), teilt die App sofort eine
+      // verfügbare Vertretung ein; aus = Dienst bleibt als "Vertretung gesucht" offen.
+      autoSubstitution: true,
       weights: createDefaultWeights(),
       yearGroupMode: 'none', // 'none' | 'mixed' | 'same'
       yearGroupRules: [], // { id, a, b, type: 'prefer' | 'avoid' } — a/b = Abijahrgang
@@ -224,10 +228,10 @@ SSD.Models = (function () {
   }
 
   /**
-   * Sonstige, vom Administrator erstellte Aufgabe für Sanis/Azubis. Bewusst
-   * ein "offener Pool" ohne feste Zuweisung: sichtbar für alle aktiven
-   * Sanis/Azubis, wer sie erledigt hat, markiert sie selbst als "Erledigt"
-   * (siehe `SSD.TasksService`).
+   * Sonstige Aufgabe für Sanis/Azubis, angelegt vom Administrator oder von
+   * Sanisprecher:innen. Bewusst ein "offener Pool" ohne feste Zuweisung:
+   * sichtbar für alle aktiven Sanis/Azubis, wer sie erledigt hat, markiert
+   * sie selbst als "Erledigt" (siehe `SSD.TasksService`).
    */
   function createTask(overrides = {}) {
     const now = new Date().toISOString();
@@ -239,8 +243,57 @@ SSD.Models = (function () {
         dueDate: null, // 'YYYY-MM-DD' | null
         status: 'open', // 'open' | 'done'
         createdAt: now,
+        createdBy: null, // null = Administrator, sonst ID der Sanisprecher:in
         completedAt: null,
         completedBy: null, // Schüler:in/Azubi-ID
+      },
+      overrides
+    );
+  }
+
+  /**
+   * Beitrag auf der Pinnwand: kurze Mitteilung, die alle Sanis/Azubis nach
+   * dem Anmelden oben im Dashboard sehen (siehe `SSD.AnnouncementsService`).
+   */
+  function createAnnouncement(overrides = {}) {
+    const now = new Date().toISOString();
+    return Object.assign(
+      {
+        id: U.generateId('ann'),
+        title: '',
+        text: '',
+        important: false, // wird hervorgehoben und oben angeheftet
+        visibleUntil: null, // 'YYYY-MM-DD' | null = unbegrenzt sichtbar
+        createdAt: now,
+        updatedAt: now,
+        createdBy: null, // null = Administrator, sonst ID der Sanisprecher:in
+      },
+      overrides
+    );
+  }
+
+  /**
+   * Internes Teamtreffen. Eingeladen sind alle aktiven Sanis/Azubis; sie
+   * sagen zu oder ab, die Team-Koordination erfasst danach die Anwesenheit
+   * (siehe `SSD.MeetingsService`).
+   */
+  function createMeeting(overrides = {}) {
+    const now = new Date().toISOString();
+    return Object.assign(
+      {
+        id: U.generateId('mtg'),
+        title: '',
+        date: U.toIsoDate(U.today()),
+        startTime: '',
+        endTime: '',
+        location: '',
+        agenda: '',
+        createdAt: now,
+        createdBy: null, // null = Administrator, sonst ID der Sanisprecher:in
+        responses: [], // { personId, status: 'yes' | 'no', at }
+        attendanceTaken: false,
+        attendanceTakenAt: null,
+        attendeeIds: [],
       },
       overrides
     );
@@ -284,6 +337,8 @@ SSD.Models = (function () {
       events: [],
       tasks: [],
       materials: [],
+      announcements: [],
+      meetings: [],
       teamsOutbox: [], // { id, at, category, text, by } — wird serverseitig gesammelt an Teams gesendet
       meta: { createdAt: now, lastModifiedAt: now, setupComplete: false },
     };
@@ -308,6 +363,8 @@ SSD.Models = (function () {
     createEvent,
     createTask,
     createMaterialRequest,
+    createAnnouncement,
+    createMeeting,
     createDefaultAppData,
   };
 })();

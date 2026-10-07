@@ -74,6 +74,11 @@ SSD.Icons = (function () {
     star: '<path d="M12 3.5l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6-4.4-4.2 6-.8z"/>',
     sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
     box: '<path d="M3.5 8l8.5-4.5L20.5 8 12 12.5 3.5 8z"/><path d="M3.5 8v8.5L12 21l8.5-4.5V8"/><path d="M12 12.5V21"/>',
+    team: '<circle cx="12" cy="7.5" r="2.8"/><path d="M6.8 19c0-3.1 2.3-5.4 5.2-5.4s5.2 2.3 5.2 5.4"/><circle cx="5" cy="9.5" r="2"/><path d="M1.8 17.5c0-2.3 1.4-4 3.4-4.3"/><circle cx="19" cy="9.5" r="2"/><path d="M22.2 17.5c0-2.3-1.4-4-3.4-4.3"/>',
+    megaphone: '<path d="M3.5 10.5v3a1 1 0 001 1h2.5l8.5 4.5v-14L7 9.5H4.5a1 1 0 00-1 1z"/><path d="M18.5 9.5a3.5 3.5 0 010 5"/><path d="M7.5 14.5l1.2 4.5h2.6l-1.1-4"/>',
+    pin: '<path d="M12 16.5v5"/><path d="M8.5 3h7l-1 6 3.5 3.5V15h-12v-2.5L9.5 9l-1-6z"/>',
+    award: '<circle cx="12" cy="9" r="5.5"/><path d="M8.6 13.4L7 21l5-2.6 5 2.6-1.6-7.6"/>',
+    calendarCheck: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M9 15.2l2 2 4-4"/>',
   };
 
   /**

@@ -252,8 +252,12 @@ SSD.SubstitutionService = (function () {
     return { vacancies, studentContext, azubiContext };
   }
 
-  /** Most-Constrained-First: löst eine Liste von Vakanzen (ggf. gemischter Sitzplatztypen) auf. */
-  function resolveVacancies(vacancies, absentSet) {
+  /**
+   * Most-Constrained-First: löst eine Liste von Vakanzen (ggf. gemischter Sitzplatztypen) auf.
+   * @param {Function} [isExcluded] - optional `(personId, vacancy) => boolean` für zusätzliche,
+   *   vakanzabhängige Ausschlüsse (z. B. bei der automatischen Vertretung: wer an dem Tag selbst ausfällt).
+   */
+  function resolveVacancies(vacancies, absentSet, isExcluded) {
     const proposals = [];
     while (vacancies.length) {
       let bestIndex = 0;
@@ -262,7 +266,7 @@ SSD.SubstitutionService = (function () {
         const v = vacancies[i];
         const currentIds = v.context.assignments.get(v.slot.key) || [];
         const excludeIds = new Set([...absentSet, ...currentIds]);
-        const eligible = v.context.students.filter((s) => !excludeIds.has(s.id) && v.context.isEligible(s.id, v.slot));
+        const eligible = v.context.students.filter((s) => !excludeIds.has(s.id) && !(isExcluded && isExcluded(s.id, v)) && v.context.isEligible(s.id, v.slot));
         if (bestEligible === null || eligible.length < bestEligible.length) {
           bestEligible = eligible;
           bestIndex = i;
@@ -296,6 +300,49 @@ SSD.SubstitutionService = (function () {
       proposals.push(Object.assign({}, base, { chosen: ranked[0], ranked }));
     }
     return proposals;
+  }
+
+  /**
+   * Automatische Vertretung, wenn sich jemand selbst abmeldet ("Ich falle aus"):
+   * dieselbe Auswahl wie im Vertretungsassistenten (harte Regeln des
+   * Dienstplans, nur als "Verfügbar" eingetragene Zeiten, beste Eignungs-
+   * bewertung, mehrere Dienste gemeinsam aufgelöst) — zusätzlich nie mit
+   * Personen, die an dem Tag selbst ausfallen (Vertretung angefragt oder einen
+   * Dienst abgegeben) oder die genau diesen Dienst schon einmal abgegeben haben.
+   * Ändert nichts — die aufrufende Funktion übernimmt das Ergebnis per Commit.
+   * @returns {Array<{entryId:string, absentStudentId:string, isAzubiSeat:boolean, replacementStudentId:?string}>}
+   */
+  function proposeAutoReplacements(personId, entryIds) {
+    const state = SSD.Store.getState();
+    const wanted = new Set(entryIds);
+    const affected = state.schedule.entries
+      .filter((e) => wanted.has(e.id) && (e.studentIds.includes(personId) || e.azubiId === personId))
+      .sort((a, b) => (a.date + a.block).localeCompare(b.date + b.block));
+    if (!affected.length) return [];
+
+    // Wer ist an welchem Tag selbst verhindert? (offene Anfrage oder bereits abgegebener Dienst)
+    const absentOnDate = new Map();
+    const markAbsent = (dateIso, id) => {
+      if (!id) return;
+      if (!absentOnDate.has(dateIso)) absentOnDate.set(dateIso, new Set());
+      absentOnDate.get(dateIso).add(id);
+    };
+    state.schedule.entries.forEach((e) => {
+      (e.substitutionRequests || []).forEach((r) => markAbsent(e.date, r.studentId));
+      (e.substitutionLog || []).forEach((log) => markAbsent(e.date, log.originalStudentId));
+    });
+    const gaveAwayEntry = new Map(affected.map((e) => [e.id, new Set((e.substitutionLog || []).map((log) => log.originalStudentId).filter(Boolean))]));
+    const isExcluded = (id, vacancy) =>
+      (absentOnDate.get(vacancy.entry.date) || new Set()).has(id) || gaveAwayEntry.get(vacancy.entry.id).has(id);
+
+    const absentSet = new Set([personId]);
+    const { vacancies } = buildContextsAndVacancies(affected, absentSet, state.settings);
+    return resolveVacancies(vacancies, absentSet, isExcluded).map((p) => ({
+      entryId: p.entryId,
+      absentStudentId: p.absentStudentId,
+      isAzubiSeat: p.isAzubiSeat,
+      replacementStudentId: p.chosen ? p.chosen.studentId : null,
+    }));
   }
 
   /**
@@ -399,6 +446,7 @@ SSD.SubstitutionService = (function () {
     ABSENCE_REASONS,
     getAffectedEntries,
     proposeSubstitutions,
+    proposeAutoReplacements,
     validateBatch,
     applySubstitutions,
     studentName,

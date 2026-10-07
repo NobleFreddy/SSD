@@ -21,6 +21,8 @@
     SSD.Router.register('/student', SSD.Views.StudentDashboard, ['student', 'azubi']);
     SSD.Router.register('/admin/dashboard', SSD.Views.AdminDashboard, ['admin']);
     SSD.Router.register('/admin/students', SSD.Views.AdminStudents, ['admin']);
+    SSD.Router.register('/admin/team', SSD.Views.AdminTeam, ['admin']);
+    SSD.Router.register('/admin/team/:tab', SSD.Views.AdminTeam, ['admin']);
     SSD.Router.register('/admin/calendar', SSD.Views.AdminCalendar, ['admin']);
     SSD.Router.register('/admin/schedule', SSD.Views.AdminSchedule, ['admin']);
     SSD.Router.register('/admin/distribution', SSD.Views.AdminDistribution, ['admin']);

@@ -15,53 +15,6 @@ SSD.Views.AdminTasks = (function () {
   let layoutHandle = null;
   let unsubscribe = null;
 
-  function field(labelText, inputEl, hint) {
-    const wrap = U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label' }, [labelText]), inputEl]);
-    if (hint) wrap.appendChild(U.el('div', { class: 'field__hint' }, [hint]));
-    return wrap;
-  }
-
-  /* ---------------------------------------------------------------------
-   * Anlegen / Bearbeiten
-   * ------------------------------------------------------------------- */
-
-  function openTaskModal(existing) {
-    const isEdit = !!existing;
-    const titleInput = U.el('input', { class: 'input', value: existing?.title || '', placeholder: 'z. B. Verbandskästen kontrollieren' });
-    const descInput = U.el('textarea', { class: 'input', rows: '3', placeholder: 'Details, Ort, Hinweise, …' }, [existing?.description || '']);
-    const dueInput = U.el('input', { class: 'input', type: 'date', value: existing?.dueDate || '' });
-    const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
-
-    const body = U.el('div', { class: 'stack gap-4' }, [
-      errorBox,
-      field('Titel', titleInput),
-      field('Beschreibung (optional)', descInput),
-      field('Fällig bis (optional)', dueInput),
-    ]);
-
-    const footerButtons = [
-      { label: 'Abbrechen', variant: 'secondary' },
-      {
-        label: isEdit ? 'Speichern' : 'Anlegen', variant: 'primary', closeOnClick: false,
-        onClick: () => {
-          errorBox.style.display = 'none';
-          if (!titleInput.value.trim()) { errorBox.textContent = 'Bitte einen Titel angeben.'; errorBox.style.display = 'flex'; return; }
-          const data = {
-            title: titleInput.value.trim(),
-            description: descInput.value.trim(),
-            dueDate: dueInput.value || null,
-          };
-          if (isEdit) SSD.TasksService.update(existing.id, data);
-          else SSD.TasksService.create(data);
-          SSD.Toast.success('Gespeichert', 'Aufgabe aktualisiert.');
-          handle.close();
-        },
-      },
-    ];
-
-    const handle = SSD.Dialog.open({ title: isEdit ? 'Aufgabe bearbeiten' : 'Aufgabe anlegen', body, wide: true, footerButtons });
-  }
-
   /* ---------------------------------------------------------------------
    * Tabellen
    * ------------------------------------------------------------------- */
@@ -85,14 +38,18 @@ SSD.Views.AdminTasks = (function () {
     }
     const rows = tasks.map((task) => {
       const editBtn = U.el('button', { class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': 'Bearbeiten', html: SSD.Icons.svg('edit', { size: 15 }) });
-      editBtn.addEventListener('click', () => openTaskModal(task));
+      editBtn.addEventListener('click', () => SSD.TaskEditor.open(task));
       const deleteBtn = U.el('button', { class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': 'Löschen', html: SSD.Icons.svg('trash', { size: 15 }) });
       deleteBtn.addEventListener('click', async () => {
         const ok = await SSD.Dialog.confirm({ title: 'Aufgabe löschen', danger: true, message: `"${task.title}" wirklich löschen?` });
         if (ok) { SSD.TasksService.remove(task.id); SSD.Toast.success('Gelöscht', 'Aufgabe entfernt.'); }
       });
       return U.el('tr', {}, [
-        U.el('td', {}, [U.el('div', { style: 'font-weight:600;' }, [task.title]), task.description ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [task.description]) : null]),
+        U.el('td', {}, [
+          U.el('div', { style: 'font-weight:600;' }, [task.title]),
+          task.description ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [task.description]) : null,
+          task.createdBy ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [`Angelegt von ${SSD.TaskEditor.creatorLabel(task)}`]) : null,
+        ]),
         U.el('td', {}, [dueBadge(task) || '—']),
         U.el('td', {}, [U.el('div', { class: 'data-table__actions' }, [editBtn, deleteBtn])]),
       ]);
@@ -159,12 +116,12 @@ SSD.Views.AdminTasks = (function () {
   function renderContent() {
     layoutHandle.contentEl.innerHTML = '';
     const addBtn = U.el('button', { class: 'btn btn--primary', html: SSD.Icons.svg('plus', { size: 16 }) }, ['Aufgabe anlegen']);
-    addBtn.addEventListener('click', () => openTaskModal(null));
+    addBtn.addEventListener('click', () => SSD.TaskEditor.open(null));
 
     layoutHandle.contentEl.appendChild(U.el('div', { class: 'page-header' }, [
       U.el('div', { class: 'page-header__text' }, [
         U.el('h1', {}, ['Aufgaben']),
-        U.el('p', {}, ['Sonstige Aufgaben für Sanis und Azubis — offener Pool, jede:r Berechtigte kann sie erledigen.']),
+        U.el('p', {}, ['Sonstige Aufgaben für Sanis und Azubis — offener Pool, jede:r Berechtigte kann sie erledigen. Auch die Sanisprecher:innen können Aufgaben anlegen.']),
       ]),
       U.el('div', { class: 'page-header__actions' }, [addBtn]),
     ]));

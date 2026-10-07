@@ -49,7 +49,7 @@ SSD.Views.AdminDashboard = (function () {
       U.el('div', { class: 'card__header' }, [
         U.el('div', {}, [
           U.el('div', { class: 'card__title' }, ['Team-Leitung']),
-          U.el('div', { class: 'card__subtitle' }, ['Erweiterte Koordinationsrechte (Vertretungen fürs Team melden, Team-Überblick) — kein Zugriff auf Konten oder Einstellungen.']),
+          U.el('div', { class: 'card__subtitle' }, ['Team-Verwaltung im Dashboard: Vertretungen melden, Lücken auffüllen, Aufgaben anlegen, Pinnwand, Teamtreffen, Registrierungen freischalten, an Verfügbarkeit erinnern, Engagement-Übersicht. Kein Zugriff auf Einstellungen, Kontenverwaltung oder die Neuberechnung des Dienstplans.']),
         ]),
       ]),
       U.el('div', { class: 'card__body grid grid-cols-2' }, [
@@ -96,19 +96,35 @@ SSD.Views.AdminDashboard = (function () {
         U.el('span', { html: SSD.Icons.svg('userAbsent', { size: 20 }) }),
         U.el('div', {}, [
           U.el('strong', {}, [`${pendingCount} neue Selbstregistrierung${pendingCount === 1 ? '' : 'en'} wartet auf Freischaltung`]),
-          U.el('p', {}, ['Klicken, um zur Schülerverwaltung zu wechseln und die Konten zu prüfen.']),
+          U.el('p', {}, ['Klicken, um sie unter Team → Mitglieder freizuschalten oder abzulehnen (auch die Sanisprecher:innen können das).']),
         ]),
       ]);
-      pendingNotice.addEventListener('click', () => SSD.Router.navigate('/admin/students'));
+      pendingNotice.addEventListener('click', () => SSD.Router.navigate('/admin/team/members'));
       frag.appendChild(pendingNotice);
+    }
+
+    const missingAvailability = SSD.StudentService.getAvailabilityGaps(null).missing.length;
+    if (missingAvailability > 0) {
+      const availabilityNotice = U.el('div', { class: 'notice-box', style: 'cursor:pointer;' }, [
+        U.el('span', { html: SSD.Icons.svg('calendar', { size: 20 }) }),
+        U.el('div', {}, [
+          U.el('strong', {}, [`${missingAvailability} aktive${missingAvailability === 1 ? ' Person hat' : ' Personen haben'} noch keine Verfügbarkeit eingetragen`]),
+          U.el('p', {}, ['Ohne Verfügbarkeit kann der Algorithmus sie nicht einteilen. Klicken, um unter Team → Mitglieder an die Eintragung zu erinnern.']),
+        ]),
+      ]);
+      availabilityNotice.addEventListener('click', () => SSD.Router.navigate('/admin/team/members'));
+      frag.appendChild(availabilityNotice);
     }
 
     const openRequestCount = SSD.SelfServiceService.getOpenRequestCount();
     if (openRequestCount > 0) {
+      const todayRequestCount = state.schedule.entries
+        .filter((e) => e.date === todayIso)
+        .reduce((sum, e) => sum + (e.substitutionRequests || []).length, 0);
       const requestNotice = U.el('div', { class: 'notice-box', style: 'cursor:pointer;' }, [
         U.el('span', { html: SSD.Icons.svg('handRaised', { size: 20 }) }),
         U.el('div', {}, [
-          U.el('strong', {}, [`${openRequestCount} Vertretungsanfrage${openRequestCount === 1 ? '' : 'n'} von Schüler:innen/Azubis`]),
+          U.el('strong', {}, [`${openRequestCount} Vertretungsanfrage${openRequestCount === 1 ? '' : 'n'} von Schüler:innen/Azubis${todayRequestCount ? ` — ${todayRequestCount} davon für heute` : ''}`]),
           U.el('p', {}, ['Diese Personen bleiben bis zur Übernahme eingeteilt. Klicken, um den Dienstplan zu öffnen (Hand-Symbol markiert die betroffenen Dienste).']),
         ]),
       ]);
@@ -125,6 +141,9 @@ SSD.Views.AdminDashboard = (function () {
         ]),
       ]));
     }
+
+    const autoSubstitutions = SSD.AutoSubstitutionList.render();
+    if (autoSubstitutions) frag.appendChild(autoSubstitutions);
 
     const grid = U.el('div', { class: 'grid grid-cols-4 stagger' }, [
       statTile('students', activeStudents.length, 'Aktive Schüler:innen'),

@@ -62,6 +62,13 @@ SSD.Views.AdminSettings = (function () {
         U.el('hr', { class: 'divider' }),
         switchRow('Automatisches Speichern', 'Änderungen sofort für alle sichtbar speichern (empfohlen). Bei Deaktivierung erscheint oben ein manueller Speichern-Button.', s.autoSave, (val) => commit({ autoSave: val }, 'Einstellung aktualisiert.')),
         U.el('hr', { class: 'divider' }),
+        switchRow(
+          'Vertretung automatisch einteilen',
+          'Meldet sich jemand im Dashboard ab („Ich falle aus“), teilt die App sofort die passendste verfügbare Person ein — nach denselben Regeln wie der Dienstplan (nur als „Verfügbar“ eingetragene Zeiten, Wochenlimit, Paar-Regeln …). Die eingeteilte Person sieht beim Anmelden einen Hinweis. Ausgeschaltet bleibt der Dienst als „Vertretung gesucht“ offen, bis jemand übernimmt.',
+          s.autoSubstitution !== false,
+          (val) => commit({ autoSubstitution: val }, val ? 'Vertretungen werden ab jetzt automatisch eingeteilt.' : 'Abmeldungen bleiben ab jetzt als „Vertretung gesucht“ offen.')
+        ),
+        U.el('hr', { class: 'divider' }),
         U.el('div', { class: 'cluster gap-3', style: 'justify-content:space-between;' }, [
           U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, ['Dienste pro Woche, Teamgröße, Prioritäten, Abijahrgangs- und Paar-Regeln finden Sie unter „Verteilung“.']),
           toDistribution,

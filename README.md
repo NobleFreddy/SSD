@@ -16,6 +16,7 @@ live aktuellen Stand sehen (siehe [Datenmodell & Datenhaltung](#datenmodell--dat
 - [Vertretungsmodus](#vertretungsmodus)
 - [Datenmodell & Datenhaltung](#datenmodell--datenhaltung)
 - [Rollen & Rechte](#rollen--rechte)
+- [Team-Koordination](#team-koordination)
 - [Import / Export](#import--export)
 - [Bereitstellung im Schulnetzwerk](#bereitstellung-im-schulnetzwerk)
 - [Teams-Benachrichtigungen](#teams-benachrichtigungen)
@@ -192,6 +193,40 @@ gesucht — der Rest des Plans bleibt unangetastet.
   stattdessen die betroffene Woche vollständig neu berechnen zu lassen — das
   bleibt aber immer eine explizite, separate Aktion.
 
+### Selbst abmelden („Ich falle aus“) mit automatischer Vertretung
+
+Wer z. B. morgens krank ist, meldet das direkt im eigenen Dashboard: Ganz
+oben steht die Karte **„Meine nächsten Dienste“** (Heute/Morgen farbig
+markiert) mit **„Vertretung anfordern“** je Dienst sowie **„Ich falle aus …“**
+für mehrere Tage (Zeitraum wählen, alle betroffenen Dienste sind
+vorausgewählt, ein Speichervorgang). Ein Grund wird bewusst nicht abgefragt
+(Gesundheitsdaten).
+
+**Automatische Vertretung** (Standard; abschaltbar unter *Einstellungen →
+Allgemein → „Vertretung automatisch einteilen“): Die App teilt sofort die
+passendste verfügbare Person ein —
+`SSD.SubstitutionService.proposeAutoReplacements` nutzt dieselben harten
+Regeln und dieselbe Eignungsbewertung wie der Vertretungsassistent (nur als
+„Verfügbar“ eingetragene Zeiten, Wochen-/Gesamtlimit, Tages-/Pausenregeln,
+Paar-Regeln; Azubi-Plätze nur mit Azubis). Zusätzlich nie eingeteilt wird,
+wer an diesem Tag selbst ausfällt (eigene Anfrage oder abgegebener Dienst)
+oder genau diesen Dienst schon einmal abgegeben hat.
+
+- Die **eingeteilte Person** sieht beim Anmelden einen Hinweis („Sie wurden
+  als Vertretung eingeteilt … für X“) und bestätigt ihn mit „Verstanden“.
+  Kann sie doch nicht, meldet sie sich beim Dienst ebenfalls ab — die App
+  sucht dann die nächste Person.
+- Die **abgemeldete Person** sieht unter „Abgegeben“, wer ihren Dienst jetzt
+  macht (auch wenn er weitergegeben wurde).
+- **Administrator und Team-Leitung** sehen unter „Automatisch eingeteilte
+  Vertretungen“ (Admin-Übersicht bzw. Team-Verwaltung), wer welchen Dienst
+  übernommen hat und ob der Hinweis schon **gesehen** wurde.
+- Findet sich niemand (oder ist die Automatik ausgeschaltet), bleibt der Dienst
+  als „Vertretung gesucht“ offen: Die Person bleibt eingeteilt, bis jemand
+  übernimmt; der Dienst erscheint bei den anderen unter „Offene Dienste“, in
+  der Team-Verwaltung und als Hinweis in der Admin-Übersicht („… davon für
+  heute“), jeweils mit der Markierung Heute/Morgen.
+
 ## Datenmodell & Datenhaltung
 
 Der komplette Anwendungszustand ist ein einziges JSON-Objekt
@@ -199,8 +234,12 @@ Der komplette Anwendungszustand ist ein einziges JSON-Objekt
 
 ```
 { version, school, admin, students[], specialDays[],
-  dutyBlockConfig, settings, schedule: { entries[] }, events[], meta }
+  dutyBlockConfig, settings, schedule: { entries[] }, events[], tasks[],
+  materials[], announcements[], meetings[], teamsOutbox[], meta }
 ```
+
+Neue Felder ergänzt `migrateIfNeeded` ([`js/core/storage.js`](js/core/storage.js))
+beim Laden mit Standardwerten — bestehende Daten bleiben unverändert erhalten.
 
 Dieses Objekt liegt vollständig in **einer Zeile einer Supabase-Tabelle**
 (`ssd_dienstplan_state`, Spalte `data`, siehe
@@ -228,7 +267,12 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
   stillschweigend überschrieben; stattdessen erscheint ein Hinweis, die Seite
   neu zu laden. Für die kleine Nutzerzahl eines Schulteams ist das ein
   angemessener Kompromiss gegenüber einer vollständigen Operational-
-  Transform-/CRDT-Lösung.
+  Transform-/CRDT-Lösung. Innerhalb eines Tabs speichert `SSD.Store`
+  nacheinander: Folgen Änderungen schneller aufeinander, als eine Speicherung
+  dauert (z. B. mehrere angetippte Verfügbarkeiten), wird danach einmal mit
+  dem vollständigen Stand nachgespeichert, statt fälschlich einen Konflikt
+  mit sich selbst zu melden; Realtime-Updates, die während des eigenen
+  Speicherns eintreffen, werden erst danach ausgewertet.
 - **Sicherheit des Zugriffs:** Die Datenbankzeile ist per Row-Level-Security
   auf Lesen/Aktualisieren beschränkt (kein Anlegen/Löschen über den Client).
   Der inhaltliche Zugriffsschutz (wer sich anmelden und was sehen darf)
@@ -248,11 +292,43 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
   Hinweise und die eigenen Wunschpartner:innen. Änderungen an der
   Verfügbarkeit sind nur innerhalb des in den Einstellungen konfigurierten
   Zeitfensters möglich ("Änderungsfrist").
+- **Sanisprecher:in / Stellv. Sanisprecher:in:** Zusatzbezeichnung für je
+  eine Person (Admin-Übersicht → *Team-Leitung*). Zusätzlich zum
+  Schülerbereich gibt es den Reiter *Team-Verwaltung* sowie Bearbeitungsrechte
+  für Pinnwand, Aufgaben und Teamtreffen — siehe
+  [Team-Koordination](#team-koordination). Kein Zugriff auf Einstellungen,
+  Kontenverwaltung oder die Neuberechnung des Dienstplans.
 - **Selbstregistrierung & Schulcode:** Ist unter *Einstellungen →
   Selbstregistrierung* (oder bei der Ersteinrichtung) ein Schulcode
   festgelegt, wird er bei der Registrierung abgefragt; mit dem richtigen Code
   ist das Konto sofort freigeschaltet und angemeldet. Ohne Schulcode warten
-  neue Konten wie bisher auf die Freischaltung in der Schülerverwaltung.
+  neue Konten auf die Freischaltung — durch den Administrator (*Team →
+  Mitglieder* oder Schülerverwaltung) oder die Sanisprecher:innen.
+
+## Team-Koordination
+
+Administrator und Sanisprecher:innen arbeiten mit denselben Bausteinen
+(`js/ui/announcementBoard.js`, `meetingsPanel.js`, `teamMembersPanel.js`,
+`engagementPanel.js`, `gapFillFlow.js`, `taskEditor.js`): der Administrator
+unter *Team* (Reiter Pinnwand, Teamtreffen, Mitglieder, Engagement), die
+Sanisprecher:innen in ihrem Dashboard.
+
+| Funktion | Was sie tut | Administrator | Sanisprecher:innen |
+|---|---|---|---|
+| **Pinnwand** | Mitteilungen oben im Dashboard aller Sanis/Azubis; „wichtig“ heftet oben an, „sichtbar bis“ blendet automatisch aus | alle Beiträge | anlegen, eigene bearbeiten/löschen |
+| **Teamtreffen** | Treffen ansetzen, alle aktiven Sanis/Azubis sagen zu oder ab, danach Anwesenheit erfassen | alle Treffen | anlegen, eigene bearbeiten; Anwesenheit bei allen |
+| **Aufgaben anlegen** | offener Aufgaben-Pool (wie bisher), jetzt auch von der Team-Leitung befüllbar | alle Aufgaben | anlegen, eigene bearbeiten/löschen |
+| **Lücken auffüllen** | besetzt unbesetzte Dienste ab heute per Algorithmus, ohne den übrigen Plan zu ändern | Dienstplan-Ansicht | Team-Verwaltung → Überblick |
+| **Registrierungen** | Selbstregistrierungen ohne Schulcode freischalten oder ablehnen | ✓ | ✓ |
+| **Wer fehlt noch?** | wer noch keine Verfügbarkeit eingetragen bzw. sie seit einem Stichtag (Halbjahresbeginn) nicht aktualisiert hat; „Erinnern“ zeigt der Person beim Anmelden einen Hinweis, bis sie ihre Verfügbarkeit ändert oder bestätigt | ✓ | ✓ |
+| **Engagement-Übersicht** | je Person geleistete Dienste (davon eingesprungen), Veranstaltungen, erledigte Aufgaben, besuchte Teamtreffen — gezählt bis heute, z. B. als Grundlage für Zeugnisbemerkungen; CSV-Export | ✓ inkl. **Nachweis drucken** (eine Seite pro Person zum Unterschreiben) | ✓ (ohne Nachweise) |
+
+Pinnwand, Teamtreffen, Erinnerungen und Freischaltungen erzeugen bewusst
+**keine** Teams-Meldungen. Aufgaben und aufgefüllte Lücken melden — wie
+bisher — die bestehenden Teams-Kategorien „Aufgaben“ bzw. „Dienstplan“.
+Abwesenheitsgründe (z. B. Krankheit) fließen nirgends in die
+Engagement-Übersicht ein; vergangene Dienste werden beim Auffüllen nie
+nachträglich besetzt.
 
 ## Import / Export
 
@@ -262,6 +338,8 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
 | CSV     | Schülerliste (Im-/Export) & Dienstplan (Export) | Schülerverwaltung / Dienstplan |
 | Excel (.xls) | Schülerliste & Dienstplan, mit Formatierung | Schülerverwaltung / Dienstplan |
 | Druck/PDF | Dienstplan & Statistik, druckoptimiert | Dienstplan / Statistik |
+| CSV     | Engagement-Übersicht (Export) | Team → Engagement |
+| Druck/PDF | Nachweise über die Mitarbeit (eine Seite pro Person) | Team → Engagement (nur Administrator) |
 
 Der CSV-Import unterstützt Massenanlage von Konten (z. B. aus einer
 Klassenliste) inkl. optionaler Passwort-Spalte; fehlt sie, wird der
@@ -282,8 +360,9 @@ Kanal gepostet — etwa 5 Minuten nach der ersten Änderung, damit z. B. zehn
 nacheinander bearbeitete Dienste nicht zehn Nachrichten erzeugen. Gemeldet
 werden (einzeln abschaltbar unter *Einstellungen → Microsoft Teams*):
 Dienstplan (neu erstellt/übertragen, Lücken aufgefüllt, manuelle Änderungen an
-kommenden Diensten), Vertretungen (eingetragen, „Vertretung gesucht“, offene
-Dienste selbst übernommen), Veranstaltungen, Aufgaben und Material.
+kommenden Diensten), Vertretungen (eingetragen, automatisch eingeteilt,
+„Vertretung gesucht“, offene Dienste selbst übernommen), Veranstaltungen,
+Aufgaben und Material.
 
 **So funktioniert es:** Die App legt jede Meldung im selben Speichervorgang
 wie die eigentliche Änderung in `teamsOutbox` ab

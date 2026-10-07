@@ -85,6 +85,43 @@ SSD.Auth = (function () {
   }
 
   /* ---------------------------------------------------------------------
+   * Team-Koordination (Administrator + Sanisprecher:innen)
+   * ---------------------------------------------------------------------
+   * Pinnwand, Teamtreffen, Aufgaben anlegen, Lücken füllen, Registrierungen
+   * freigeben und die Engagement-Übersicht stehen dem Administrator und den
+   * Personen mit Zusatzbezeichnung (Sanisprecher:in / Stellv.) offen. Wie alle
+   * Rechte dieser App wird das im Browser geprüft (siehe README, Sicherheit).
+   */
+
+  function isAdminSession() {
+    const session = getSession();
+    return !!(session && session.role === 'admin');
+  }
+
+  function canCoordinate() {
+    if (isAdminSession()) return true;
+    const student = getCurrentStudent();
+    return !!(student && student.active && SSD.StudentService.isTeamLead(student));
+  }
+
+  /** ID der angemeldeten Schüler:in/des Azubis — `null` beim Administrator (= "von der Administration"). */
+  function currentPersonId() {
+    const session = getSession();
+    return session && session.role !== 'admin' ? session.studentId || null : null;
+  }
+
+  /**
+   * Darf die angemeldete Person einen Eintrag der Team-Koordination
+   * (Pinnwand-Beitrag, Teamtreffen, Aufgabe) bearbeiten oder löschen?
+   * Administrator: alle; Sanisprecher:innen: nur selbst angelegte.
+   */
+  function canManageItem(item) {
+    if (!item || !canCoordinate()) return false;
+    if (isAdminSession()) return true;
+    return !!item.createdBy && item.createdBy === currentPersonId();
+  }
+
+  /* ---------------------------------------------------------------------
    * Schulcode für die Selbstregistrierung
    * ---------------------------------------------------------------------
    * Wer sich mit dem richtigen Code registriert, ist sofort freigeschaltet.
@@ -218,6 +255,7 @@ SSD.Auth = (function () {
   return {
     generateSalt, hashPassword, verifyPassword,
     getSession, setSession, logout, getCurrentStudent,
+    isAdminSession, canCoordinate, currentPersonId, canManageItem,
     completeSetup, loginAdmin, loginStudent,
     setStudentPassword, changeAdminCredentials, isUsernameTaken,
     REGISTRATION_CODE_MIN_LENGTH, normalizeRegistrationCode, isValidRegistrationCode,

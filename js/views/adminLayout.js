@@ -16,6 +16,7 @@ SSD.Views.AdminLayout = (function () {
   const NAV_ITEMS = [
     { key: 'dashboard', path: '/admin/dashboard', label: 'Übersicht', icon: 'dashboard' },
     { key: 'students', path: '/admin/students', label: 'Schülerverwaltung', icon: 'students' },
+    { key: 'team', path: '/admin/team', label: 'Team', icon: 'team' },
     { key: 'calendar', path: '/admin/calendar', label: 'Kalender', icon: 'calendar' },
     { key: 'schedule', path: '/admin/schedule', label: 'Dienstplan', icon: 'schedule' },
     { key: 'distribution', path: '/admin/distribution', label: 'Verteilung', icon: 'sliders' },

@@ -112,6 +112,14 @@ SSD.Utils = (function () {
     return date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
+  /** "Heute" / "Morgen" für ein ISO-Datum (YYYY-MM-DD), sonst `null` — für Dringlichkeits-Hinweise. */
+  function relativeDayLabel(dateIso) {
+    const now = today();
+    if (dateIso === toIsoDate(now)) return 'Heute';
+    if (dateIso === toIsoDate(addDays(now, 1))) return 'Morgen';
+    return null;
+  }
+
   function isSameDay(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
@@ -369,7 +377,7 @@ SSD.Utils = (function () {
     WEEKDAY_KEYS, WEEKDAY_LABELS, WEEKDAY_LABELS_SHORT,
     DUTY_BLOCKS, DUTY_BLOCK_KEYS, blockLabel,
     toIsoDate, parseIsoDate, today, addDays, schoolYearEnd, getMondayOfWeek, getIsoWeekNumber,
-    formatDateShort, formatDateLong, formatDateMedium, formatDateTime,
+    formatDateShort, formatDateLong, formatDateMedium, formatDateTime, relativeDayLabel,
     isSameDay, isWeekend, weekdayKeyFromDate, getWeekDates, dayDiff,
     generateId, createSeededRandom, shuffleInPlace,
     debounce, clamp, deepClone, nextTick, mean, standardDeviation, round, fairnessScoreFromStdDev,

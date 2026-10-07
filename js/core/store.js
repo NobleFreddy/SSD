@@ -32,6 +32,9 @@ SSD.Store = (function () {
   let undoStack = []; // { label, snapshot }
   let redoStack = [];
   let dirty = false; // true, wenn bei deaktiviertem Auto-Save ungespeicherte Änderungen bestehen
+  let saveLoop = null; // laufender Speichervorgang (Promise) — es speichert immer nur einer gleichzeitig
+  let saveAgain = false; // während des Speicherns kamen weitere Änderungen hinzu
+  let deferredRemote = null; // während des Speicherns eingetroffene Realtime-Änderung { data, version }
 
   /** Lädt den Anfangszustand aus Supabase und richtet die Live-Synchronisierung ein. */
   async function init() {
@@ -53,6 +56,13 @@ SSD.Store = (function () {
       SSD.EventBus.emit('store:remote-update-deferred', {});
       return;
     }
+    if (saveLoop) {
+      // Während eines eigenen Speichervorgangs nichts überschreiben: Das Realtime-Echo
+      // der eigenen Speicherung kann vor der Server-Antwort eintreffen und enthielte
+      // dann ältere Daten als der lokale Stand. Entschieden wird nach dem Speichern.
+      deferredRemote = { data: newData, version: newVersion };
+      return;
+    }
     state = newData;
     SSD.Storage.setKnownVersion(newVersion);
     SSD.EventBus.emit('store:changed', { label: 'Von anderem Gerät aktualisiert', remote: true });
@@ -68,12 +78,44 @@ SSD.Store = (function () {
     persist(); // bewusst nicht awaited — Commit-Aufrufer sollen nicht auf das Netzwerk warten müssen
   }
 
-  /** Führt den eigentlichen (asynchronen) Speichervorgang aus und meldet das Ergebnis über den EventBus. */
-  async function persist() {
-    const result = await SSD.Storage.save(state);
+  /**
+   * Speichert den aktuellen Stand — nacheinander statt parallel: Zwei
+   * überlappende Speichervorgänge desselben Tabs würden mit derselben
+   * Versionsnummer starten, der zweite liefe in die optimistische Sperre und
+   * meldete fälschlich einen Konflikt (z. B. bei schnell hintereinander
+   * angetippten Verfügbarkeiten). Kommt während des Speicherns eine weitere
+   * Änderung hinzu, wird danach einmal mit dem dann aktuellen Stand nachgespeichert.
+   */
+  function persist() {
+    if (saveLoop) {
+      saveAgain = true;
+      return saveLoop;
+    }
+    saveLoop = runSaveLoop();
+    return saveLoop;
+  }
+
+  /** Führt die (asynchronen) Speichervorgänge aus und meldet das Ergebnis über den EventBus. */
+  async function runSaveLoop() {
+    let result;
+    do {
+      saveAgain = false;
+      result = await SSD.Storage.save(state);
+    } while (result.ok && saveAgain);
+    // Synchron direkt nach der letzten Prüfung freigeben — so kann keine Änderung "dazwischen" verloren gehen.
+    saveLoop = null;
+    const remote = deferredRemote;
+    deferredRemote = null;
+
     if (result.ok) {
       if (dirty) { dirty = false; SSD.EventBus.emit('store:dirty', { dirty: false }); }
+      // Neuer als der eigene Stand? Dann war es eine echte fremde Änderung (das Echo der
+      // eigenen Speicherung trägt dieselbe Versionsnummer und wird verworfen).
+      if (remote && remote.version > SSD.Storage.getKnownVersion()) applyRemoteState(remote.data, remote.version);
     } else if (result.conflict) {
+      // Wie bisher: Den Stand der anderen Person übernehmen, damit weitere Änderungen
+      // wieder gespeichert werden können; der Hinweis bittet um erneute Eingabe.
+      if (remote) applyRemoteState(remote.data, remote.version);
       SSD.EventBus.emit('store:conflict', {});
     }
     return result;

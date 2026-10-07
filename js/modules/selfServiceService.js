@@ -169,16 +169,176 @@ SSD.SelfServiceService = (function () {
 
   /** Markiert den eigenen Platz in einem Dienst als "Vertretung gesucht" (Person bleibt bis zur Übernahme eingeteilt). */
   function requestSubstitution(personId, entry) {
-    SSD.Store.commit('Vertretung angefragt', (draft) => {
-      const target = draft.schedule.entries.find((e) => e.id === entry.id);
-      if (!target) return;
-      target.substitutionRequests = target.substitutionRequests || [];
-      if (!target.substitutionRequests.some((r) => r.studentId === personId)) {
-        target.substitutionRequests.push({ studentId: personId, requestedAt: new Date().toISOString() });
-        const N = SSD.NotificationService;
-        N.add(draft, 'substitution', `${N.personName(personId)} sucht eine Vertretung — ${N.dutyLabel(target)}.`);
+    requestSubstitutions(personId, [entry.id]);
+  }
+
+  /** Ist die Person in diesem Dienst eingeteilt (regulärer oder Azubi-Platz)? */
+  function isAssigned(personId, entry) {
+    return entry.studentIds.includes(personId) || entry.azubiId === personId;
+  }
+
+  /**
+   * Kommende, tatsächlich stattfindende Dienste einer Person (ab heute, ohne
+   * gesperrte Tage) — Grundlage für die Schnell-Meldung "Ich falle aus".
+   */
+  function getUpcomingDutiesOf(personId) {
+    const todayIso = U.toIsoDate(U.today());
+    return SSD.Store.getState().schedule.entries
+      .filter((e) => e.date >= todayIso && isAssigned(personId, e) && SSD.CalendarService.isDayUsable(e.date))
+      .sort((a, b) => (a.date + a.block).localeCompare(b.date + b.block));
+  }
+
+  /** Teilt die App bei einer Selbst-Abmeldung automatisch eine Vertretung ein? (Einstellung des Administrators) */
+  function isAutoSubstitutionEnabled() {
+    return SSD.SettingsService.get().autoSubstitution !== false;
+  }
+
+  /**
+   * "Ich falle aus": meldet die Person für mehrere eigene Dienste auf einmal
+   * ab — bewusst in EINEM Speichervorgang (eine Sammelmeldung, kein Wettlauf
+   * mehrerer Speicherungen). Vergangene Dienste, bereits angefragte und
+   * solche, in denen die Person nicht (mehr) eingeteilt ist, werden
+   * übersprungen.
+   *
+   * Mit automatischer Vertretung (Standard, abschaltbar) trägt die App sofort
+   * die passendste verfügbare Person ein (`SSD.SubstitutionService.proposeAutoReplacements`);
+   * diese sieht beim Anmelden einen Hinweis. Nur Dienste ohne zulässige
+   * Ersatzperson bleiben — wie ohne Automatik — als "Vertretung gesucht" offen,
+   * die Person bleibt dort eingeteilt, bis jemand übernimmt.
+   *
+   * @returns {{ requested: number, replaced: Array<{entryId:string, replacementId:string}>, open: string[] }}
+   */
+  function requestSubstitutions(personId, entryIds) {
+    const todayIso = U.toIsoDate(U.today());
+    const wanted = new Set(entryIds);
+    const isNew = (e) => wanted.has(e.id) && e.date >= todayIso && isAssigned(personId, e) && !hasOpenRequest(personId, e);
+    const byDate = (a, b) => (a.date + a.block).localeCompare(b.date + b.block);
+    const candidates = SSD.Store.getState().schedule.entries.filter(isNew);
+    const result = { requested: candidates.length, replaced: [], open: [] };
+    if (!candidates.length) return result;
+
+    const replacements = new Map();
+    if (isAutoSubstitutionEnabled()) {
+      SSD.SubstitutionService.proposeAutoReplacements(personId, candidates.map((e) => e.id))
+        .filter((p) => p.replacementStudentId)
+        .forEach((p) => replacements.set(p.entryId, p));
+    }
+
+    const label = candidates.length === 1 ? 'Vertretung angefragt' : `Vertretung angefragt (${candidates.length} Dienste)`;
+    SSD.Store.commit(label, (draft) => {
+      const at = new Date().toISOString();
+      const N = SSD.NotificationService;
+      const lines = [];
+      draft.schedule.entries.filter(isNew).sort(byDate).forEach((target) => {
+        const choice = replacements.get(target.id);
+        if (choice) {
+          if (choice.isAzubiSeat) target.azubiId = choice.replacementStudentId;
+          else target.studentIds[target.studentIds.indexOf(personId)] = choice.replacementStudentId;
+          target.isManual = true;
+          target.substitutionLog = target.substitutionLog || [];
+          target.substitutionLog.push({
+            originalStudentId: personId,
+            replacementStudentId: choice.replacementStudentId,
+            reason: 'Automatische Vertretung (selbst abgemeldet)',
+            appliedAt: at,
+            auto: true,
+            acknowledgedAt: null, // die eingeteilte Person bestätigt den Hinweis im Dashboard
+          });
+          result.replaced.push({ entryId: target.id, replacementId: choice.replacementStudentId });
+          lines.push(`${N.dutyLabel(target)}: ${N.personName(choice.replacementStudentId)} übernimmt (automatisch eingeteilt)`);
+        } else {
+          target.substitutionRequests = target.substitutionRequests || [];
+          target.substitutionRequests.push({ studentId: personId, requestedAt: at });
+          result.open.push(target.id);
+          lines.push(`${N.dutyLabel(target)}: Vertretung gesucht`);
+        }
+      });
+
+      const name = N.personName(personId);
+      if (!result.replaced.length) {
+        // Wie bisher (ohne Automatik bzw. ohne passende Person)
+        if (lines.length === 1) {
+          const target = draft.schedule.entries.find((e) => e.id === result.open[0]);
+          N.add(draft, 'substitution', `${name} sucht eine Vertretung — ${N.dutyLabel(target)}.`);
+        } else {
+          N.add(draft, 'substitution', N.withDetails(`${name} sucht eine Vertretung für ${lines.length} Dienste:`, lines.map((l) => l.replace(/: Vertretung gesucht$/, ''))));
+        }
+      } else if (lines.length === 1) {
+        N.add(draft, 'substitution', `${name} fällt aus — ${lines[0]}.`);
+      } else {
+        N.add(draft, 'substitution', N.withDetails(`${name} fällt aus (${lines.length} Dienste):`, lines));
       }
     });
+    return result;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Automatisch eingeteilte Vertretungen — Hinweis für die eingeteilte
+   * Person, Überblick für Team-Leitung und Administrator
+   * ------------------------------------------------------------------- */
+
+  /** Letzter Protokolleintrag, mit dem `personId` in diesen Dienst gekommen ist. */
+  function latestLogFor(entry, personId) {
+    const logs = (entry.substitutionLog || []).filter((log) => log.replacementStudentId === personId);
+    return logs.length ? logs[logs.length - 1] : null;
+  }
+
+  /** Kommende automatisch eingeteilte Vertretungen (alle Personen), sortiert. */
+  function getUpcomingAutoSubstitutions() {
+    const todayIso = U.toIsoDate(U.today());
+    const list = [];
+    SSD.Store.getState().schedule.entries.forEach((entry) => {
+      if (entry.date < todayIso) return;
+      const people = entry.studentIds.concat(entry.azubiId ? [entry.azubiId] : []);
+      people.forEach((id) => {
+        const log = latestLogFor(entry, id);
+        if (log && log.auto) list.push({ entry, log, replacementId: id, originalId: log.originalStudentId });
+      });
+    });
+    return list.sort((a, b) => (a.entry.date + a.entry.block).localeCompare(b.entry.date + b.entry.block));
+  }
+
+  /** Automatisch übernommene Dienste der Person, deren Hinweis sie noch nicht bestätigt hat. */
+  function getUnseenAutoSubstitutions(personId) {
+    return getUpcomingAutoSubstitutions().filter((item) => item.replacementId === personId && !item.log.acknowledgedAt);
+  }
+
+  /** "Verstanden" — die eingeteilte Person hat den Hinweis gesehen. */
+  function acknowledgeAutoSubstitutions(personId) {
+    SSD.Store.commit('Vertretung zur Kenntnis genommen', (draft) => {
+      const at = new Date().toISOString();
+      draft.schedule.entries.forEach((entry) => {
+        (entry.substitutionLog || []).forEach((log) => {
+          if (log.auto && log.replacementStudentId === personId && !log.acknowledgedAt) log.acknowledgedAt = at;
+        });
+      });
+    }, { trackHistory: false });
+  }
+
+  /**
+   * Kommende Dienste, die die Person abgegeben hat, mit der Person, die sie
+   * jetzt tatsächlich macht (gibt die Vertretung den Dienst weiter, wird die
+   * Kette im Protokoll bis zur aktuell eingeteilten Person verfolgt).
+   */
+  function getCoveredDutiesOf(personId) {
+    const todayIso = U.toIsoDate(U.today());
+    const lastHandover = (entry, fromId) => (entry.substitutionLog || []).filter((log) => log.originalStudentId === fromId && log.replacementStudentId).pop() || null;
+    return SSD.Store.getState().schedule.entries
+      .filter((e) => e.date >= todayIso && !isAssigned(personId, e))
+      .map((entry) => {
+        const first = lastHandover(entry, personId);
+        if (!first) return null;
+        let current = first.replacementStudentId;
+        const seen = new Set([personId]);
+        while (current && !isAssigned(current, entry) && !seen.has(current)) {
+          seen.add(current);
+          const next = lastHandover(entry, current);
+          current = next ? next.replacementStudentId : null;
+        }
+        return { entry, replacementId: current && isAssigned(current, entry) ? current : null, auto: !!first.auto };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a.entry.date + a.entry.block).localeCompare(b.entry.date + b.entry.block));
   }
 
   /** Zieht eine noch unbeantwortete eigene Vertretungsanfrage zurück. */
@@ -209,7 +369,8 @@ SSD.SelfServiceService = (function () {
 
   return {
     getOpenSeats, getOpenSeatsForPerson, canClaim, claimSeat,
-    requestSubstitution, cancelSubstitutionRequest, hasOpenRequest,
-    getOpenRequestCount,
+    requestSubstitution, requestSubstitutions, cancelSubstitutionRequest, hasOpenRequest,
+    getUpcomingDutiesOf, getOpenRequestCount, isAutoSubstitutionEnabled,
+    getUpcomingAutoSubstitutions, getUnseenAutoSubstitutions, acknowledgeAutoSubstitutions, getCoveredDutiesOf, latestLogFor,
   };
 })();

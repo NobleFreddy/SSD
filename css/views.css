@@ -100,3 +100,56 @@ kbd { background: var(--bg-sunken); border: 1px solid var(--border-default); bor
 
 /* ---- Print button (screen) ------------------------------------------------------------- */
 .printable-section { }
+
+/* ---- Pinnwand ---------------------------------------------------------------------------- */
+.board__heading { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.board__icon { display: flex; flex: none; margin-top: 2px; color: var(--color-primary); }
+.board-post { padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.board-post + .board-post { margin-top: var(--space-3); }
+.board-post--important { border-left: 4px solid var(--color-primary); background: var(--color-primary-soft); }
+.board-post--expired { opacity: 0.72; }
+.board-post__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.board-post__title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-weight: 700; color: var(--text-primary); overflow-wrap: anywhere; }
+.board-post__pin { display: flex; color: var(--color-primary); }
+.board-post__meta { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
+.board-post__text { margin: var(--space-2) 0 0; color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pre-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---- Unterreiter (z. B. Team-Verwaltung) --------------------------------------------------- */
+.tabs--sub { box-shadow: none; gap: var(--space-2); }
+.tabs--sub .tab { border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 6px 14px; background: var(--bg-surface); }
+.tabs--sub .tab.is-active { border-color: var(--color-primary); background: var(--color-primary-soft); color: var(--color-primary-strong); }
+
+/* ---- Listen (Mitglieder, vergangene Treffen) ---------------------------------------------- */
+.member-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); padding: 10px 4px; border-bottom: 1px solid var(--border-subtle); }
+.member-row:last-child { border-bottom: none; }
+.section-label { font-size: var(--font-size-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); }
+.section-label .input { text-transform: none; letter-spacing: normal; font-weight: 500; padding-top: 4px; padding-bottom: 4px; }
+details.collapsible > summary { cursor: pointer; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-secondary); padding: 4px 0; }
+details.collapsible > summary:hover { color: var(--text-primary); }
+
+/* ---- Teamtreffen: Anwesenheitsliste --------------------------------------------------------- */
+.attendance-list { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
+.attendance-list .checkbox-row { padding: 6px 0; flex-wrap: wrap; }
+.attendance-list .checkbox-row + .checkbox-row { border-top: 1px solid var(--border-subtle); }
+
+/* ---- Sortierbare Tabellen (Engagement) ------------------------------------------------------ */
+.data-table th.is-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.member-row__main { display: flex; align-items: center; gap: var(--space-3); min-width: 0; flex: 1 1 240px; }
+.member-row__main > div:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---- Meine nächsten Dienste (Schnell-Meldung "Ich falle aus") ------------------------------ */
+.quick-duty { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); padding: 10px 4px; border-bottom: 1px solid var(--border-subtle); }
+.quick-duty:last-of-type { border-bottom: none; }
+.quick-duty__main { min-width: 0; flex: 1 1 220px; }
+.quick-duty--covered { padding-top: 6px; padding-bottom: 6px; }
+
+/* ---- Hinweis "Sie wurden als Vertretung eingeteilt" ------------------------------------------ */
+.notice-box--info { background: var(--color-primary-soft); border-color: var(--color-primary-200); }
+.notice-box--info svg { color: var(--color-primary); }
+.notice-box--info strong { color: var(--color-primary-strong); }
+:root[data-theme="dark"] .notice-box--info { border-color: var(--color-primary-700); }
+.notice-list { margin: 6px 0 4px; padding-left: 18px; font-size: var(--font-size-sm); color: var(--text-primary); }
+.notice-list li + li { margin-top: 2px; }
+.notice-list strong { color: var(--text-primary) !important; }

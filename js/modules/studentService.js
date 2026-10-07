@@ -89,18 +89,63 @@ SSD.StudentService = (function () {
     });
   }
 
+  function removeFromDraft(draft, id) {
+    draft.students = draft.students.filter((s) => s.id !== id);
+    draft.schedule.entries.forEach((entry) => {
+      entry.studentIds = entry.studentIds.filter((sid) => sid !== id);
+      if (entry.azubiId === id) entry.azubiId = null;
+    });
+    draft.students.forEach((s) => {
+      if (Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = s.preferredPartnerIds.filter((pid) => pid !== id);
+    });
+    draft.settings.pairRules = (draft.settings.pairRules || []).filter((r) => r.a !== id && r.b !== id);
+    (draft.meetings || []).forEach((m) => {
+      m.responses = (m.responses || []).filter((r) => r.personId !== id);
+      m.attendeeIds = (m.attendeeIds || []).filter((pid) => pid !== id);
+    });
+  }
+
   function remove(id) {
     const student = getById(id);
     SSD.Store.commit(`Schüler "${student ? student.firstName + ' ' + student.lastName : ''}" gelöscht`, (draft) => {
-      draft.students = draft.students.filter((s) => s.id !== id);
-      draft.schedule.entries.forEach((entry) => {
-        entry.studentIds = entry.studentIds.filter((sid) => sid !== id);
-        if (entry.azubiId === id) entry.azubiId = null;
-      });
-      draft.students.forEach((s) => {
-        if (Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = s.preferredPartnerIds.filter((pid) => pid !== id);
-      });
-      draft.settings.pairRules = (draft.settings.pairRules || []).filter((r) => r.a !== id && r.b !== id);
+      removeFromDraft(draft, id);
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+   * Selbstregistrierungen freigeben/ablehnen (Administrator + Team-Leitung)
+   * ---------------------------------------------------------------------
+   * Beide Aktionen prüfen den *aktuellen* Stand: Hat inzwischen jemand
+   * anderes entschieden (z. B. die zweite Sanisprecher:in auf einem anderen
+   * Gerät), wird nichts verändert — eine Ablehnung darf nie versehentlich
+   * ein bereits freigeschaltetes Konto löschen.
+   */
+
+  function getPendingRegistrations() {
+    return getAll().filter((s) => s.pendingApproval).sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  }
+
+  function assertPendingRegistration(id) {
+    if (!SSD.Auth.canCoordinate()) throw new Error('Dafür fehlt die Berechtigung.');
+    const student = getById(id);
+    if (!student || !student.pendingApproval) throw new Error('Diese Registrierung wurde inzwischen bereits bearbeitet.');
+    return student;
+  }
+
+  function approveRegistration(id) {
+    const student = assertPendingRegistration(id);
+    SSD.Store.commit(`Registrierung freigeschaltet: ${fullName(student)}`, (draft) => {
+      const target = draft.students.find((s) => s.id === id);
+      if (!target) return;
+      target.active = true;
+      target.pendingApproval = false;
+    });
+  }
+
+  function rejectRegistration(id) {
+    const student = assertPendingRegistration(id);
+    SSD.Store.commit(`Registrierung abgelehnt: ${fullName(student)}`, (draft) => {
+      removeFromDraft(draft, id);
     });
   }
 
@@ -193,6 +238,70 @@ SSD.StudentService = (function () {
   }
 
   /* ---------------------------------------------------------------------
+   * "Wer fehlt noch?" — fehlende/veraltete Verfügbarkeiten & Erinnerungen
+   * ------------------------------------------------------------------- */
+
+  /** Beginn des laufenden Schulhalbjahres (1. August bzw. 1. Februar) — Standard-Stichtag für "veraltet". */
+  function currentHalfYearStart(referenceDate) {
+    const ref = referenceDate || U.today();
+    const year = ref.getFullYear();
+    const month = ref.getMonth(); // 0 = Januar
+    if (month >= 7) return `${year}-08-01`;
+    if (month >= 1) return `${year}-02-01`;
+    return `${year - 1}-08-01`;
+  }
+
+  /** Datum (YYYY-MM-DD, lokale Zeit) der letzten Änderung/Bestätigung der Verfügbarkeit. */
+  function availabilityUpdatedDate(student) {
+    const stamp = student.availabilityUpdatedAt || student.createdAt;
+    return stamp ? U.toIsoDate(new Date(stamp)) : null;
+  }
+
+  /**
+   * Aktive Sanis/Azubis ohne eingetragene Verfügbarkeit (`missing`) bzw. mit
+   * Eintrag, der seit dem Stichtag nicht mehr geändert/bestätigt wurde (`outdated`).
+   */
+  function getAvailabilityGaps(sinceIso) {
+    const active = getActive();
+    const missing = [];
+    const outdated = [];
+    active.forEach((s) => {
+      if (!SSD.StatisticsService.hasAnyAvailability(s)) missing.push(s);
+      else if (sinceIso && (availabilityUpdatedDate(s) || '') < sinceIso) outdated.push(s);
+    });
+    const byName = (a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName);
+    return { missing: missing.sort(byName), outdated: outdated.sort(byName), activeCount: active.length };
+  }
+
+  /** Die Personen sehen nach dem Anmelden einen Hinweis, bis sie ihre Verfügbarkeit ändern oder bestätigen. */
+  function remindAvailability(ids) {
+    if (!SSD.Auth.canCoordinate()) throw new Error('Dafür fehlt die Berechtigung.');
+    const idSet = new Set(ids);
+    let count = 0;
+    if (!idSet.size) return count;
+    const now = new Date().toISOString();
+    SSD.Store.commit(`An Verfügbarkeit erinnert (${idSet.size})`, (draft) => {
+      draft.students.forEach((s) => {
+        if (idSet.has(s.id) && s.active) { s.availabilityReminderAt = now; count += 1; }
+      });
+    }, { trackHistory: false });
+    return count;
+  }
+
+  function needsAvailabilityReminder(student) {
+    if (!student || !student.availabilityReminderAt) return false;
+    return !student.availabilityUpdatedAt || student.availabilityUpdatedAt < student.availabilityReminderAt;
+  }
+
+  /** "Meine Verfügbarkeit ist aktuell" — ändert nichts am Stundenplan, beendet aber eine Erinnerung. */
+  function confirmAvailability(id) {
+    SSD.Store.commit('Verfügbarkeit bestätigt', (draft) => {
+      const student = draft.students.find((s) => s.id === id);
+      if (student) student.availabilityUpdatedAt = new Date().toISOString();
+    }, { trackHistory: false });
+  }
+
+  /* ---------------------------------------------------------------------
    * Änderungsfrist ("Zeitraum, in dem Änderungen erlaubt sind")
    * ------------------------------------------------------------------- */
 
@@ -276,6 +385,9 @@ SSD.StudentService = (function () {
     MAX_PREFERRED_PARTNERS, getPreferredPartners, setPreferredPartners,
     getLeadershipHolder, isTeamLead, setLeadershipRole, clearLeadershipRole,
     setAvailabilityCell, resetPassword, getAvailabilityWindow, getPendingApprovalCount,
+    getPendingRegistrations, approveRegistration, rejectRegistration,
+    currentHalfYearStart, availabilityUpdatedDate, getAvailabilityGaps, remindAvailability,
+    needsAvailabilityReminder, confirmAvailability,
     getDutiesForStudent, getDutySummary,
     filterStudents, getDistinctClasses, getDistinctYearGroups, fullName,
   };

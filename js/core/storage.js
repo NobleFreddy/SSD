@@ -141,6 +141,7 @@ SSD.Storage = (function () {
   }
 
   function setKnownVersion(version) { lastKnownVersion = version; }
+  function getKnownVersion() { return lastKnownVersion || 0; }
 
   /**
    * Status des serverseitigen Teams-Versands (Tabelle `ssd_teams_status`,
@@ -211,12 +212,22 @@ SSD.Storage = (function () {
     data.students = Array.isArray(data.students) ? data.students : [];
     data.students.forEach((s) => {
       if (!Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = [];
+      if (s.availabilityReminderAt === undefined) s.availabilityReminderAt = null;
     });
     data.schedule = data.schedule || defaults.schedule;
     data.specialDays = data.specialDays || [];
     data.events = data.events || [];
     data.tasks = data.tasks || [];
+    data.tasks.forEach((t) => {
+      if (t.createdBy === undefined) t.createdBy = null; // ältere Aufgaben stammen alle vom Administrator
+    });
     data.materials = data.materials || [];
+    data.announcements = Array.isArray(data.announcements) ? data.announcements : [];
+    data.meetings = Array.isArray(data.meetings) ? data.meetings : [];
+    data.meetings.forEach((m) => {
+      if (!Array.isArray(m.responses)) m.responses = [];
+      if (!Array.isArray(m.attendeeIds)) m.attendeeIds = [];
+    });
     data.meta = Object.assign({}, defaults.meta, data.meta || {});
     return data;
   }
@@ -232,7 +243,7 @@ SSD.Storage = (function () {
   }
 
   return {
-    load, save, clearAll, restoreBackup, subscribeToRemoteChanges, setKnownVersion, fetchTeamsStatus,
+    load, save, clearAll, restoreBackup, subscribeToRemoteChanges, setKnownVersion, getKnownVersion, fetchTeamsStatus,
     exportJsonFile, importJsonFile,
     getStorageUsageInfo,
   };
