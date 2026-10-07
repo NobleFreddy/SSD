@@ -207,6 +207,134 @@ SSD.Views.AdminSettings = (function () {
     ]);
   }
 
+  /* ---------------------------------------------------------------------
+   * Microsoft Teams
+   * ------------------------------------------------------------------- */
+
+  function statusLine(badgeClass, badgeText, text) {
+    return U.el('div', { class: 'cluster gap-2', style: 'font-size:var(--font-size-sm);' }, [
+      U.el('span', { class: `badge ${badgeClass}` }, [badgeText]),
+      U.el('span', { class: 'text-secondary' }, [text]),
+    ]);
+  }
+
+  /** Lädt den Versandstatus (Tabelle `ssd_teams_status`, vom Server gepflegt) und zeigt ihn an. */
+  async function loadTeamsStatus(el, enabled) {
+    const st = await SSD.Storage.fetchTeamsStatus();
+    el.innerHTML = '';
+    if (!st) {
+      el.appendChild(statusLine('', 'Status unbekannt', 'Der Versand-Status ist nicht abrufbar (Datenbank-Erweiterung fehlt oder keine Verbindung).'));
+      return;
+    }
+    const at = (iso) => U.formatDateTime(new Date(iso));
+    if (!st.configured) {
+      el.appendChild(statusLine('badge--warning', 'Nicht eingerichtet', 'Es ist noch keine Teams-Workflow-Adresse hinterlegt — siehe Anleitung unten.'));
+    } else if (st.last_error) {
+      el.appendChild(statusLine('badge--danger', 'Fehler', `${st.last_error} (${at(st.last_error_at)}). Es wird automatisch erneut versucht.`));
+    } else if (st.last_sent_at) {
+      el.appendChild(statusLine('badge--success', 'Verbunden', `Zuletzt gesendet: ${at(st.last_sent_at)} (${st.last_sent_count === 1 ? '1 Meldung' : `${st.last_sent_count} Meldungen`}).`));
+    } else {
+      el.appendChild(statusLine('badge--primary', 'Eingerichtet', 'Bisher wurde noch nichts gesendet.'));
+    }
+    const notes = [];
+    if (!enabled) notes.push('Benachrichtigungen sind ausgeschaltet.');
+    if (st.pending_count > 0) notes.push(`${st.pending_count === 1 ? '1 Meldung wartet' : `${st.pending_count} Meldungen warten`} auf den nächsten Versand (gesammelt etwa 5 Minuten nach der ersten Änderung).`);
+    if (st.note) notes.push(st.note);
+    if (st.configured && st.last_checked_at && Date.now() - new Date(st.last_checked_at).getTime() > 5 * 60 * 1000) {
+      notes.push(`Achtung: Die Datenbank hat seit ${at(st.last_checked_at)} nicht mehr nach neuen Meldungen gesehen — der Zeitplan (pg_cron) scheint nicht zu laufen.`);
+    }
+    notes.forEach((n) => el.appendChild(U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [n])));
+  }
+
+  function codeBlock(text) {
+    const pre = U.el('pre', { style: 'margin:0; padding:10px 12px; background:var(--bg-sunken); border:1px solid var(--border-subtle); border-radius:var(--radius-md); font-size:var(--font-size-xs); white-space:pre-wrap; word-break:break-all;' }, [text]);
+    const copyBtn = U.el('button', { type: 'button', class: 'btn btn--secondary btn--sm', style: 'align-self:flex-start;' }, ['Kopieren']);
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        SSD.Toast.success('Kopiert', 'Im Supabase-SQL-Editor einfügen und die Platzhalter ersetzen.');
+      } catch (err) {
+        SSD.Toast.warning('Kopieren nicht möglich', 'Bitte den Text markieren und manuell kopieren.');
+      }
+    });
+    return U.el('div', { class: 'stack gap-2' }, [pre, copyBtn]);
+  }
+
+  function buildTeamsGuide() {
+    const appUrl = location.protocol === 'https:' ? `${location.origin}${location.pathname}` : 'https://ADRESSE-DER-WEBSEITE/';
+    const setupSql = [
+      '-- 1) Teams-Workflow-Adresse hinterlegen (ADRESSE durch die kopierte Adresse ersetzen):',
+      "select vault.create_secret('ADRESSE', 'ssd_teams_webhook_url');",
+      '',
+      '-- 2) Optional: Link für den Button „Dienstplan öffnen“ in der Teams-Nachricht:',
+      `select vault.create_secret('${appUrl}', 'ssd_teams_app_url');`,
+    ].join('\n');
+    const changeSql = [
+      '-- Adresse später ändern (NEUE_ADRESSE ersetzen):',
+      "select vault.update_secret((select id from vault.secrets where name = 'ssd_teams_webhook_url'), 'NEUE_ADRESSE');",
+      '',
+      '-- Teams-Anbindung komplett trennen:',
+      "delete from vault.secrets where name = 'ssd_teams_webhook_url';",
+    ].join('\n');
+    const li = (children) => U.el('li', { style: 'margin-bottom:8px;' }, children);
+
+    return U.el('details', {}, [
+      U.el('summary', { style: 'cursor:pointer; font-weight:600;' }, ['Einrichtung — Schritt für Schritt']),
+      U.el('ol', { style: 'margin:12px 0 0; padding-left:20px; font-size:var(--font-size-sm);' }, [
+        li(['In Teams den gewünschten Kanal öffnen, beim Kanalnamen auf „…“ (Weitere Optionen) klicken und „Workflows“ wählen. Gibt es diesen Punkt nicht, hat die Schul-IT Workflows (Power Automate) gesperrt — dann dort nachfragen.']),
+        li(['Die Vorlage „Bei Empfang einer Webhookanforderung in einem Kanal posten“ (englisch „Post to a channel when a webhook request is received“) wählen, Team und Kanal bestätigen und „Workflow hinzufügen“ klicken.']),
+        li(['Die angezeigte Adresse kopieren. Sie ist geheim — wer sie kennt, kann in den Kanal schreiben. Deshalb wird sie nicht hier in der App eingetragen, sondern verschlüsselt in der Datenbank.']),
+        li([
+          'Im Supabase-Dashboard das Projekt des Dienstplans öffnen, links „SQL Editor“ wählen, den folgenden Text einfügen, ADRESSE ersetzen und „Run“ klicken:',
+          U.el('div', { style: 'margin-top:8px;' }, [codeBlock(setupSql)]),
+        ]),
+        li(['Hier oben „Benachrichtigungen aktiv“ einschalten und „Testnachricht senden“ klicken — die Nachricht erscheint nach etwa einer Minute im Kanal.']),
+      ]),
+      U.el('div', { class: 'field__label', style: 'margin-top:8px;' }, ['Später ändern oder trennen']),
+      codeBlock(changeSql),
+    ]);
+  }
+
+  function buildTeamsCard() {
+    const teams = Object.assign(SSD.Models.createDefaultTeamsSettings(), SSD.SettingsService.get().teams || {});
+    function saveTeams(patch) {
+      SSD.SettingsService.update({ teams: Object.assign({}, teams, patch) });
+      SSD.Toast.success('Gespeichert', 'Teams-Einstellung aktualisiert.');
+    }
+
+    const statusEl = U.el('div', { class: 'stack gap-1' }, [U.el('span', { class: 'text-tertiary', style: 'font-size:var(--font-size-sm);' }, ['Status wird geladen …'])]);
+    loadTeamsStatus(statusEl, teams.enabled);
+
+    const testBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('bell', { size: 15 }), disabled: !teams.enabled }, ['Testnachricht senden']);
+    testBtn.addEventListener('click', () => {
+      SSD.NotificationService.sendTest();
+      SSD.Toast.show({ type: 'info', title: 'Testnachricht vorgemerkt', message: 'Sie erscheint nach etwa einer Minute im Teams-Kanal — sofern die Workflow-Adresse hinterlegt ist.', duration: 6000 });
+    });
+
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'card__header' }, [
+        U.el('div', {}, [
+          U.el('div', { class: 'card__title' }, ['Microsoft Teams']),
+          U.el('div', { class: 'card__subtitle' }, ['Änderungen werden gesammelt (etwa 5 Minuten nach der ersten Änderung) als eine Nachricht in einen Teams-Kanal gepostet.']),
+        ]),
+      ]),
+      U.el('div', { class: 'card__body stack gap-3' }, [
+        statusEl,
+        switchRow('Benachrichtigungen aktiv', 'Meldungen werden nur gesammelt und gesendet, solange dieser Schalter an ist.', teams.enabled, (val) => saveTeams({ enabled: val })),
+        U.el('hr', { class: 'divider' }),
+        U.el('div', { class: 'field__label' }, ['Was soll gemeldet werden?']),
+        U.el('div', {}, SSD.NotificationService.CATEGORIES.map((c) => switchRow(c.label, c.hint, teams.categories[c.key] !== false,
+          (val) => saveTeams({ categories: Object.assign({}, teams.categories, { [c.key]: val }) })))),
+        U.el('div', { class: 'cluster gap-2' }, [testBtn]),
+        U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, [
+          'Hinweis: In den Nachrichten stehen Namen und Dienstzeiten — bitte einen Kanal wählen, den nur das Sanitätsdienst-Team und die Verantwortlichen sehen.',
+        ]),
+        U.el('hr', { class: 'divider' }),
+        buildTeamsGuide(),
+      ]),
+    ]);
+  }
+
   function renderContent() {
     layoutHandle.contentEl.innerHTML = '';
     layoutHandle.contentEl.appendChild(U.el('div', { class: 'page-header' }, [
@@ -215,6 +343,7 @@ SSD.Views.AdminSettings = (function () {
     layoutHandle.contentEl.appendChild(buildSchoolCard());
     layoutHandle.contentEl.appendChild(buildGeneralCard());
     layoutHandle.contentEl.appendChild(buildRegistrationCard());
+    layoutHandle.contentEl.appendChild(buildTeamsCard());
     layoutHandle.contentEl.appendChild(buildAdminCard());
     layoutHandle.contentEl.appendChild(buildDataCard());
   }

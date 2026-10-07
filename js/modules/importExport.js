@@ -29,7 +29,10 @@ SSD.ImportExport = (function () {
   }
 
   async function importDataJson(file) {
-    return SSD.Storage.importJsonFile(file);
+    const data = await SSD.Storage.importJsonFile(file);
+    // Meldungen aus einem älteren Backup sollen nicht erneut an Teams gehen.
+    data.teamsOutbox = [];
+    return data;
   }
 
   /* ---------------------------------------------------------------------

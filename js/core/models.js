@@ -163,6 +163,19 @@ SSD.Models = (function () {
       pairRules: [], // { id, a, b, type: 'prefer' | 'never' } — a/b = Personen-IDs
       registrationCodeHash: null, // gesalzener Hash des Schulcodes (nie im Klartext)
       registrationCodeSalt: null,
+      teams: createDefaultTeamsSettings(),
+    };
+  }
+
+  /**
+   * Teams-Benachrichtigungen. Die geheime Workflow-Adresse und der Link für
+   * den Button in der Teams-Nachricht stehen bewusst NICHT hier (der
+   * Datenbestand ist öffentlich les- und schreibbar), sondern im Supabase Vault.
+   */
+  function createDefaultTeamsSettings() {
+    return {
+      enabled: false,
+      categories: { schedule: true, substitution: true, event: true, task: true, material: true },
     };
   }
 
@@ -271,6 +284,7 @@ SSD.Models = (function () {
       events: [],
       tasks: [],
       materials: [],
+      teamsOutbox: [], // { id, at, category, text, by } — wird serverseitig gesammelt an Teams gesendet
       meta: { createdAt: now, lastModifiedAt: now, setupComplete: false },
     };
   }
@@ -288,6 +302,7 @@ SSD.Models = (function () {
     createSpecialDay,
     createDefaultDutyBlockConfig,
     createDefaultWeights,
+    createDefaultTeamsSettings,
     createDefaultSettings,
     createScheduleEntry,
     createEvent,

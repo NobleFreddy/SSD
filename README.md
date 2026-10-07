@@ -18,6 +18,7 @@ live aktuellen Stand sehen (siehe [Datenmodell & Datenhaltung](#datenmodell--dat
 - [Rollen & Rechte](#rollen--rechte)
 - [Import / Export](#import--export)
 - [Bereitstellung im Schulnetzwerk](#bereitstellung-im-schulnetzwerk)
+- [Teams-Benachrichtigungen](#teams-benachrichtigungen)
 - [Sicherheit — bitte lesen](#sicherheit--bitte-lesen)
 - [Erweiterbarkeit](#erweiterbarkeit)
 
@@ -274,6 +275,51 @@ keine eigenen serverseitigen Komponenten nötig, lediglich eine
 Internetverbindung zur gemeinsamen Supabase-Datenbank (siehe
 [Datenmodell & Datenhaltung](#datenmodell--datenhaltung)).
 
+## Teams-Benachrichtigungen
+
+Änderungen werden gesammelt als **eine** Nachricht in einen Microsoft-Teams-
+Kanal gepostet — etwa 5 Minuten nach der ersten Änderung, damit z. B. zehn
+nacheinander bearbeitete Dienste nicht zehn Nachrichten erzeugen. Gemeldet
+werden (einzeln abschaltbar unter *Einstellungen → Microsoft Teams*):
+Dienstplan (neu erstellt/übertragen, Lücken aufgefüllt, manuelle Änderungen an
+kommenden Diensten), Vertretungen (eingetragen, „Vertretung gesucht“, offene
+Dienste selbst übernommen), Veranstaltungen, Aufgaben und Material.
+
+**So funktioniert es:** Die App legt jede Meldung im selben Speichervorgang
+wie die eigentliche Änderung in `teamsOutbox` ab
+([`js/modules/notificationService.js`](js/modules/notificationService.js)) —
+wird die Änderung rückgängig gemacht, verschwindet auch die Meldung. Den
+Versand übernimmt die Datenbank selbst: Ein `pg_cron`-Job ruft jede Minute
+`ssd_private.send_teams_digest()` auf (Supabase-Migration
+`ssd_teams_notifications`), der neue Meldungen sammelt und als Adaptive Card
+per `pg_net` an einen Teams-Workflow schickt. Das Ergebnis (gesendet/Fehler/
+wartend) steht in der lesbaren Tabelle `ssd_teams_status` und wird in den
+Einstellungen angezeigt. Pro Stunde gehen höchstens 12 Nachrichten raus;
+nach einem Fehler wird nach 15 Minuten erneut versucht.
+
+**Einrichtung** (Anleitung auch direkt in der App):
+
+1. In Teams im gewünschten Kanal „…“ → *Workflows* → Vorlage „Bei Empfang
+   einer Webhookanforderung in einem Kanal posten“ → Team/Kanal bestätigen →
+   *Workflow hinzufügen* → angezeigte Adresse kopieren. Fehlt der Menüpunkt,
+   hat die Schul-IT Workflows/Power Automate gesperrt.
+2. Im Supabase-Dashboard → *SQL Editor* einmalig ausführen:
+   ```sql
+   select vault.create_secret('ADRESSE', 'ssd_teams_webhook_url');
+   -- optional, für den Button „Dienstplan öffnen“:
+   select vault.create_secret('https://ADRESSE-DER-WEBSEITE/', 'ssd_teams_app_url');
+   ```
+   Die Workflow-Adresse ist geheim (wer sie kennt, kann in den Kanal
+   schreiben) und gehört deshalb nicht in den Code oder den Datenbestand,
+   sondern verschlüsselt in den Vault. Ändern:
+   `vault.update_secret(...)`, trennen: `delete from vault.secrets where name = 'ssd_teams_webhook_url';`
+3. In der App *Einstellungen → Microsoft Teams* → „Benachrichtigungen aktiv“
+   einschalten → „Testnachricht senden“ (erscheint nach etwa einer Minute).
+
+**Datenschutz:** Die Nachrichten enthalten Namen und Dienstzeiten — bitte
+einen Kanal wählen, den nur das Sanitätsdienst-Team und die Verantwortlichen
+sehen.
+
 ## Sicherheit — bitte lesen
 
 Passwörter werden nicht im Klartext, sondern als gesalzener SHA-256-Hash
@@ -305,6 +351,17 @@ einer sofort freigeschalteten Registrierung ab — ist aber aus denselben
 Gründen eine Komfort-Hürde und keine harte Zugangskontrolle. Ein langer,
 zufällig erzeugter Code (Button „Zufällig“) ist schwerer zu erraten als ein
 kurzes Wort.
+
+**Teams-Benachrichtigungen:** Die Workflow-Adresse liegt nur verschlüsselt im
+Supabase Vault und ist über die API nicht erreichbar; Versandfunktion und
+interne Tabellen liegen im nicht veröffentlichten Schema `ssd_private`. Weil
+der Datenbestand aber mit dem öffentlichen Schlüssel beschreibbar ist, könnte
+eine technisch versierte Person mit Kenntnis des Schlüssels eigene Texte in
+den Postausgang schreiben, die dann im Kanal erscheinen. Das ist begrenzt:
+höchstens 12 Nachrichten pro Stunde, Links werden entfernt, alles wird als
+reiner Text ohne Formatierung angezeigt, und der Button-Link stammt aus dem
+Vault, nicht aus dem Datenbestand. Bei Missbrauch den Vault-Eintrag
+`ssd_teams_webhook_url` löschen oder den Workflow in Teams ausschalten.
 
 **Datenbank wach halten:** Supabase pausiert Projekte im kostenlosen Tarif
 nach etwa einer Woche ohne Zugriff. Der GitHub-Workflow

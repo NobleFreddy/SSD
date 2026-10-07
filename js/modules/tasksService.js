@@ -35,6 +35,8 @@ SSD.TasksService = (function () {
     const task = SSD.Models.createTask(data);
     SSD.Store.commit(`Aufgabe "${task.title}" angelegt`, (draft) => {
       draft.tasks.push(task);
+      const due = task.dueDate ? ` (fällig ${SSD.Utils.formatDateMedium(SSD.Utils.parseIsoDate(task.dueDate))})` : '';
+      SSD.NotificationService.add(draft, 'task', `Neue Aufgabe: ${task.title}${due}.`);
     });
     return task;
   }
@@ -61,6 +63,7 @@ SSD.TasksService = (function () {
       task.status = 'done';
       task.completedAt = new Date().toISOString();
       task.completedBy = personId;
+      SSD.NotificationService.add(draft, 'task', `Aufgabe erledigt: ${task.title} (von ${SSD.NotificationService.personName(personId)}).`);
     }, { trackHistory: false });
   }
 
@@ -72,6 +75,7 @@ SSD.TasksService = (function () {
       task.status = 'open';
       task.completedAt = null;
       task.completedBy = null;
+      SSD.NotificationService.add(draft, 'task', `Aufgabe wieder geöffnet: ${task.title}.`);
     });
   }
 

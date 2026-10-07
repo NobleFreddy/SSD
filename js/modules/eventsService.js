@@ -29,10 +29,18 @@ SSD.EventsService = (function () {
     return getAll().filter((e) => e.date >= todayIso);
   }
 
+  /** „Samstag, 17.10.2026, 10:00–14:00 Uhr, Aula“ — für Teams-Meldungen. */
+  function whenText(event) {
+    const day = U.formatDateLong(U.parseIsoDate(event.date));
+    const time = event.startTime && event.endTime ? `, ${event.startTime}–${event.endTime} Uhr` : (event.startTime ? `, ab ${event.startTime} Uhr` : '');
+    return `${day}${time}${event.location ? `, ${event.location}` : ''}`;
+  }
+
   function create(data) {
     const event = SSD.Models.createEvent(data);
     SSD.Store.commit(`Veranstaltung "${event.title}" angelegt`, (draft) => {
       draft.events.push(event);
+      SSD.NotificationService.add(draft, 'event', `Neue Veranstaltung: ${event.title} — ${whenText(event)}.`);
     });
     return event;
   }
@@ -40,7 +48,9 @@ SSD.EventsService = (function () {
   function update(id, patch) {
     SSD.Store.commit('Veranstaltung bearbeitet', (draft) => {
       const event = draft.events.find((e) => e.id === id);
-      if (event) Object.assign(event, patch);
+      if (!event) return;
+      Object.assign(event, patch);
+      SSD.NotificationService.add(draft, 'event', `Veranstaltung geändert: ${event.title} — ${whenText(event)}.`);
     });
   }
 
@@ -48,6 +58,7 @@ SSD.EventsService = (function () {
     const event = getById(id);
     SSD.Store.commit(`Veranstaltung "${event ? event.title : ''}" gelöscht`, (draft) => {
       draft.events = draft.events.filter((e) => e.id !== id);
+      if (event) SSD.NotificationService.add(draft, 'event', `Veranstaltung gelöscht: ${event.title} (${U.formatDateMedium(U.parseIsoDate(event.date))}).`);
     });
   }
 
@@ -131,6 +142,7 @@ SSD.EventsService = (function () {
       toAdd.forEach((p) => {
         if (!target.participantIds.includes(p.id)) target.participantIds.push(p.id);
       });
+      SSD.NotificationService.add(draft, 'event', `${target.title}: ${toAdd.length === 1 ? '1 Person' : `${toAdd.length} Personen`} automatisch eingeteilt (${toAdd.map((p) => SSD.StudentService.fullName(p)).join(', ')}).`);
     });
     return toAdd;
   }

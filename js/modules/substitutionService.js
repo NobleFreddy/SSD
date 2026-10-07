@@ -363,6 +363,8 @@ SSD.SubstitutionService = (function () {
     if (!applied.length) return 0;
 
     SSD.Store.commit(`Vertretung eingetragen (${reasonLabel || 'Abwesenheit'})`, (draft) => {
+      const N = SSD.NotificationService;
+      const lines = [];
       applied.forEach((choice) => {
         const entry = draft.schedule.entries.find((e) => e.id === choice.entryId);
         if (!entry) return;
@@ -383,7 +385,12 @@ SSD.SubstitutionService = (function () {
           reason: choice.reasonText || reasonLabel || '',
           appliedAt,
         });
+        const seat = choice.isAzubiSeat ? ' (Azubi-Platz)' : '';
+        lines.push(choice.replacementStudentId
+          ? `${N.dutyLabel(entry)}: ${N.personName(choice.replacementStudentId)} vertritt ${N.personName(choice.absentStudentId)}${seat}`
+          : `${N.dutyLabel(entry)}: ${N.personName(choice.absentStudentId)} fällt aus — Platz bleibt offen${seat}`);
       });
+      if (lines.length) N.add(draft, 'substitution', N.withDetails(`Vertretung eingetragen${reasonLabel ? ` (${reasonLabel})` : ''}:`, lines));
     });
     return applied.length;
   }

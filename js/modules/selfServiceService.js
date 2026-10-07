@@ -157,6 +157,11 @@ SSD.SelfServiceService = (function () {
         reason: requestedBy ? 'Vertretung eigenständig übernommen' : 'Offener Dienst eigenständig übernommen',
         appliedAt,
       });
+      const N = SSD.NotificationService;
+      const seatNote = seatType === 'azubi' ? ' (Azubi-Platz)' : '';
+      N.add(draft, 'substitution', requestedBy
+        ? `${N.personName(personId)} übernimmt den Dienst von ${N.personName(requestedBy)}${seatNote} — ${N.dutyLabel(target)}.`
+        : `${N.personName(personId)} übernimmt einen offenen Dienst${seatNote} — ${N.dutyLabel(target)}.`);
       applied = true;
     });
     return applied;
@@ -170,6 +175,8 @@ SSD.SelfServiceService = (function () {
       target.substitutionRequests = target.substitutionRequests || [];
       if (!target.substitutionRequests.some((r) => r.studentId === personId)) {
         target.substitutionRequests.push({ studentId: personId, requestedAt: new Date().toISOString() });
+        const N = SSD.NotificationService;
+        N.add(draft, 'substitution', `${N.personName(personId)} sucht eine Vertretung — ${N.dutyLabel(target)}.`);
       }
     });
   }
@@ -179,7 +186,12 @@ SSD.SelfServiceService = (function () {
     SSD.Store.commit('Vertretungsanfrage zurückgezogen', (draft) => {
       const target = draft.schedule.entries.find((e) => e.id === entry.id);
       if (!target) return;
+      const hadRequest = (target.substitutionRequests || []).some((r) => r.studentId === personId);
       target.substitutionRequests = (target.substitutionRequests || []).filter((r) => r.studentId !== personId);
+      if (hadRequest) {
+        const N = SSD.NotificationService;
+        N.add(draft, 'substitution', `${N.personName(personId)} braucht doch keine Vertretung — ${N.dutyLabel(target)}.`);
+      }
     });
   }
 

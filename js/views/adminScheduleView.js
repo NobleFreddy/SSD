@@ -78,11 +78,30 @@ SSD.Views.AdminSchedule = (function () {
         entry = SSD.Models.createScheduleEntry({ date: dateIso, weekday, block });
         draft.schedule.entries.push(entry);
       }
+      const before = { ids: entry.studentIds.slice(), azubiId: entry.azubiId || null };
       entry.studentIds = studentIds;
       if (azubiId !== undefined) entry.azubiId = azubiId || null;
       entry.isManual = true;
+      notifyManualChange(draft, entry, before);
     });
     SSD.Toast.success('Gespeichert', 'Der Dienstplan wurde aktualisiert.');
+  }
+
+  /** Teams-Meldung für eine manuelle Änderung an einem kommenden Dienst (nur bei echter Änderung). */
+  function notifyManualChange(draft, entry, before) {
+    const N = SSD.NotificationService;
+    if (!N.isUpcoming(entry.date)) return;
+    const sameStudents = before.ids.length === entry.studentIds.length && before.ids.every((id) => entry.studentIds.includes(id));
+    if (sameStudents && before.azubiId === (entry.azubiId || null)) return;
+    const describe = (ids, azubi) => {
+      if (!ids.length && !azubi) return 'unbesetzt';
+      return `${ids.length ? N.names(ids) : 'niemand'}${azubi ? ` + Azubi ${N.personName(azubi)}` : ''}`;
+    };
+    const nowText = describe(entry.studentIds, entry.azubiId);
+    const text = nowText === 'unbesetzt'
+      ? `${N.dutyLabel(entry)}: Dienst geleert (vorher ${describe(before.ids, before.azubiId)}).`
+      : `${N.dutyLabel(entry)}: jetzt ${nowText} (vorher ${describe(before.ids, before.azubiId)}).`;
+    N.add(draft, 'schedule', text);
   }
 
   function openDutyEditModal(dateIso, weekday, block) {
@@ -265,6 +284,11 @@ SSD.Views.AdminSchedule = (function () {
         const endIso = U.toIsoDate(U.addDays(monday, weeks * 7 - 1));
         draft.schedule.entries = draft.schedule.entries.filter((e) => e.date < startIso || e.date > endIso);
         draft.schedule.entries.push(...result.entries);
+        if (result.stats.totalSlots > 0) {
+          SSD.NotificationService.add(draft, 'schedule',
+            `Neuer Dienstplan für ${U.formatDateShort(monday)}–${U.formatDateShort(U.addDays(monday, weeks * 7 - 3))}: ` +
+            `${result.stats.filledSlots} von ${result.stats.totalSlots} Diensten vollständig besetzt — bitte die eigenen Dienste in der App prüfen.`);
+        }
       });
 
       viewedMonday = monday;
@@ -364,10 +388,21 @@ SSD.Views.AdminSchedule = (function () {
       }
 
       SSD.Store.commit(`Lücken aufgefüllt (${U.formatDateMedium(monday)}, ${weeks} Woche(n))`, (draft) => {
+        const N = SSD.NotificationService;
+        const lines = [];
         result.updatedEntries.forEach((u) => {
           const target = draft.schedule.entries.find((e) => e.id === u.id);
-          if (target) { target.studentIds = u.studentIds; target.isManual = true; }
+          if (!target) return;
+          const added = u.studentIds.filter((id) => !target.studentIds.includes(id));
+          target.studentIds = u.studentIds;
+          target.isManual = true;
+          if (added.length && N.isUpcoming(target.date)) lines.push(`${N.dutyLabel(target)}: neu ${N.names(added)}`);
         });
+        if (lines.length) {
+          N.add(draft, 'schedule', N.withDetails(
+            `Lücken aufgefüllt (${U.formatDateShort(monday)}–${U.formatDateShort(U.addDays(monday, weeks * 7 - 3))}) — auch mit Personen, die dort „Nicht verfügbar“ eingetragen hatten:`,
+            lines));
+        }
       });
 
       renderContent();
@@ -442,6 +477,9 @@ SSD.Views.AdminSchedule = (function () {
       const endIso = U.toIsoDate(U.addDays(templateMonday, result.weeksProcessed * 7 + 6));
       draft.schedule.entries = draft.schedule.entries.filter((e) => e.date < startIso || e.date > endIso);
       draft.schedule.entries.push(...result.entries);
+      SSD.NotificationService.add(draft, 'schedule',
+        `Dienstplan übertragen: Die Einteilung der Woche ab ${U.formatDateShort(templateMonday)} gilt jetzt auch für ` +
+        `${result.weeksProcessed === 1 ? 'die Folgewoche' : `${result.weeksProcessed} Folgewochen`} (bis ${U.formatDateShort(U.addDays(templateMonday, result.weeksProcessed * 7 + 4))}).`);
     });
     renderContent();
     SSD.Toast.success(

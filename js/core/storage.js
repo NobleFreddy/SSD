@@ -142,6 +142,21 @@ SSD.Storage = (function () {
 
   function setKnownVersion(version) { lastKnownVersion = version; }
 
+  /**
+   * Status des serverseitigen Teams-Versands (Tabelle `ssd_teams_status`,
+   * siehe Supabase-Migration "ssd_teams_notifications") — enthält nur
+   * Zeitstempel/Anzahl/Fehlertext, keine Geheimnisse. `null`, falls (noch)
+   * nicht verfügbar.
+   */
+  async function fetchTeamsStatus() {
+    try {
+      const { data, error } = await client.from('ssd_teams_status').select('*').eq('id', 1).maybeSingle();
+      return error ? null : data;
+    } catch (err) {
+      return null;
+    }
+  }
+
   /** Löst den Download der aktuellen Daten als formatierte JSON-Datei aus. */
   function exportJsonFile(data, filename) {
     const pretty = JSON.stringify(data, null, 2);
@@ -187,6 +202,11 @@ SSD.Storage = (function () {
     delete data.settings.preferMixedGender;
     if (!Array.isArray(data.settings.yearGroupRules)) data.settings.yearGroupRules = [];
     if (!Array.isArray(data.settings.pairRules)) data.settings.pairRules = [];
+    const storedTeams = storedSettings.teams || {};
+    data.settings.teams = Object.assign({}, defaults.settings.teams, storedTeams, {
+      categories: Object.assign({}, defaults.settings.teams.categories, storedTeams.categories || {}),
+    });
+    if (!Array.isArray(data.teamsOutbox)) data.teamsOutbox = [];
 
     data.students = Array.isArray(data.students) ? data.students : [];
     data.students.forEach((s) => {
@@ -212,7 +232,7 @@ SSD.Storage = (function () {
   }
 
   return {
-    load, save, clearAll, restoreBackup, subscribeToRemoteChanges, setKnownVersion,
+    load, save, clearAll, restoreBackup, subscribeToRemoteChanges, setKnownVersion, fetchTeamsStatus,
     exportJsonFile, importJsonFile,
     getStorageUsageInfo,
   };

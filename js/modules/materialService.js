@@ -34,6 +34,8 @@ SSD.MaterialService = (function () {
     const item = SSD.Models.createMaterialRequest(data);
     SSD.Store.commit(`Material angefragt: "${item.name}"`, (draft) => {
       draft.materials.push(item);
+      const qty = item.quantity ? ` (${item.quantity})` : '';
+      SSD.NotificationService.add(draft, 'material', `Material angefragt: ${item.name}${qty} — von ${SSD.NotificationService.personName(item.requestedBy)}.`);
     });
     return item;
   }
@@ -63,9 +65,13 @@ SSD.MaterialService = (function () {
 
   /** Statuswechsel durch den Administrator (kein Berechtigungscheck nötig — Admin darf immer). */
   function setStatus(id, status) {
+    const STATUS_TEXT = { offen: 'wieder offen', bestellt: 'bestellt', erledigt: 'erledigt' };
     SSD.Store.commit(`Material-Status geändert: ${status}`, (draft) => {
       const item = draft.materials.find((m) => m.id === id);
-      if (item) { item.status = status; item.updatedAt = new Date().toISOString(); }
+      if (!item || item.status === status) return;
+      item.status = status;
+      item.updatedAt = new Date().toISOString();
+      SSD.NotificationService.add(draft, 'material', `Material „${item.name}“: ${STATUS_TEXT[status] || status}.`);
     });
   }
 
