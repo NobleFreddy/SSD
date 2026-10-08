@@ -179,7 +179,7 @@ SSD.Models = (function () {
   function createDefaultTeamsSettings() {
     return {
       enabled: false,
-      categories: { schedule: true, substitution: true, event: true, task: true, material: true },
+      categories: { schedule: true, substitution: true, meeting: true, event: true, task: true, material: true },
     };
   }
 

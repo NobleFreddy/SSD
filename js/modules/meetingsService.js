@@ -12,6 +12,10 @@
  * (die Sanisprecher:in leitet z. B. ein Treffen, das der Administrator
  * angelegt hat); Bearbeiten/Löschen der Administrator alle Treffen,
  * Sanisprecher:innen nur selbst angelegte (siehe `SSD.Auth.canManageItem`).
+ *
+ * Teams (Kategorie „Teamtreffen“): Neue kommende Treffen werden angekündigt,
+ * bei kommenden Treffen außerdem geänderte Zeit/Ort und Absagen gemeldet.
+ * Nachträglich erfasste (vergangene) Treffen und einzelne Zu-/Absagen nicht.
  */
 window.SSD = window.SSD || {};
 
@@ -73,30 +77,69 @@ SSD.MeetingsService = (function () {
     };
   }
 
+  /* ---------------------------------------------------------------------
+   * Teams-Meldungen
+   * ------------------------------------------------------------------- */
+
+  function isUpcoming(meeting) {
+    return meeting.date >= todayIso();
+  }
+
+  /** Was Teilnehmende wissen müssen — reine Titel- oder Tagesordnungsänderungen melden wir nicht. */
+  function scheduleKey(meeting) {
+    return [meeting.date, meeting.startTime, meeting.endTime, meeting.location].join('|');
+  }
+
+  /** Ankündigung: Kopfzeile plus die ersten Punkte der Tagesordnung. */
+  function announcementText(meeting) {
+    const agenda = (meeting.agenda || '').split(/\r?\n/)
+      .map((line) => line.replace(/^\s*[-*•–]\s*/, '').trim())
+      .filter(Boolean)
+      .map((line) => (line.length > 160 ? `${line.slice(0, 159)}…` : line));
+    return SSD.NotificationService.withDetails(
+      `Neues Teamtreffen: ${meeting.title} — ${whenText(meeting)}. Bitte im Dashboard unter „Teamtreffen“ zu- oder absagen.`,
+      agenda, 5);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Anlegen, Bearbeiten, Löschen
+   * ------------------------------------------------------------------- */
+
   function create(data) {
     if (!SSD.Auth.canCoordinate()) throw new Error('Dafür fehlt die Berechtigung.');
     const meeting = SSD.Models.createMeeting(Object.assign(clean(data), { createdBy: SSD.Auth.currentPersonId() }));
     SSD.Store.commit(`Teamtreffen "${meeting.title}" angelegt`, (draft) => {
       draft.meetings = draft.meetings || [];
       draft.meetings.push(meeting);
+      if (isUpcoming(meeting)) SSD.NotificationService.add(draft, 'meeting', announcementText(meeting));
     });
     return meeting;
   }
 
   function update(id, data) {
-    if (!canManage(getById(id))) throw new Error('Dieses Treffen darf nur die Person bearbeiten, die es angelegt hat, oder der Administrator.');
+    const original = getById(id);
+    if (!canManage(original)) throw new Error('Dieses Treffen darf nur die Person bearbeiten, die es angelegt hat, oder der Administrator.');
     const patch = clean(data);
+    const before = Object.assign({}, original); // der Commit ändert das Objekt direkt
     SSD.Store.commit('Teamtreffen bearbeitet', (draft) => {
       const meeting = (draft.meetings || []).find((m) => m.id === id);
-      if (meeting) Object.assign(meeting, patch);
+      if (!meeting) return;
+      Object.assign(meeting, patch);
+      if (!isUpcoming(meeting) || scheduleKey(meeting) === scheduleKey(before)) return;
+      // Lag das Treffen bisher in der Vergangenheit, wurde es nie angekündigt — dann jetzt wie ein neues.
+      SSD.NotificationService.add(draft, 'meeting', isUpcoming(before)
+        ? SSD.NotificationService.withDetails(`Teamtreffen geändert: ${meeting.title} — jetzt ${whenText(meeting)}.`, [`bisher: ${whenText(before)}`])
+        : announcementText(meeting));
     });
   }
 
   function remove(id) {
     const meeting = getById(id);
     if (!canManage(meeting)) throw new Error('Dieses Treffen darf nur die Person löschen, die es angelegt hat, oder der Administrator.');
+    const notice = isUpcoming(meeting) ? `Teamtreffen abgesagt: ${meeting.title} — ${whenText(meeting)}.` : null;
     SSD.Store.commit(`Teamtreffen "${meeting.title}" gelöscht`, (draft) => {
       draft.meetings = (draft.meetings || []).filter((m) => m.id !== id);
+      if (notice) SSD.NotificationService.add(draft, 'meeting', notice);
     });
   }
 

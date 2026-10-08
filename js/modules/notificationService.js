@@ -2,8 +2,8 @@
  * ============================================================================
  * SSD.NotificationService — Meldungen für Microsoft Teams
  * ============================================================================
- * Meldenswerte Änderungen (Dienstplan, Vertretungen, Veranstaltungen,
- * Aufgaben, Material) werden als lesbarer Text in `state.teamsOutbox`
+ * Meldenswerte Änderungen (Dienstplan, Vertretungen, Teamtreffen,
+ * Veranstaltungen, Aufgaben, Material) werden als lesbarer Text in `state.teamsOutbox`
  * abgelegt — immer innerhalb des Speichervorgangs der eigentlichen Änderung
  * (`add(draft, …)` im Commit-Mutator), damit kein zusätzlicher Save entsteht
  * und ein Rückgängig-Machen die Meldung automatisch wieder entfernt.
@@ -23,6 +23,7 @@ SSD.NotificationService = (function () {
   const CATEGORIES = [
     { key: 'schedule', label: 'Dienstplan', hint: 'Neu erstellt oder übertragen, Lücken aufgefüllt, manuelle Änderungen an kommenden Diensten.' },
     { key: 'substitution', label: 'Vertretungen', hint: 'Vertretungen eingetragen, „Vertretung gesucht“, offene Dienste selbst übernommen.' },
+    { key: 'meeting', label: 'Teamtreffen', hint: 'Neue Treffen sowie Verlegungen und Absagen kommender Treffen (einzelne Zu-/Absagen nicht).' },
     { key: 'event', label: 'Veranstaltungen', hint: 'Neu angelegt, geändert, gelöscht oder automatisch aufgefüllt (einzelne An-/Abmeldungen nicht).' },
     { key: 'task', label: 'Aufgaben', hint: 'Neue Aufgaben, erledigt, wieder geöffnet.' },
     { key: 'material', label: 'Material', hint: 'Neue Materialanfragen und Statusänderungen.' },
@@ -75,6 +76,12 @@ SSD.NotificationService = (function () {
     if (draft.teamsOutbox.length > MAX_OUTBOX) draft.teamsOutbox.splice(0, draft.teamsOutbox.length - MAX_OUTBOX);
   }
 
+  /** Wird eine Meldung dieser Kategorie derzeit an Teams gemeldet? (für Hinweise in der Oberfläche) */
+  function isActive(category) {
+    const teams = SSD.Store.getState().settings.teams;
+    return !!(teams && teams.enabled && !(teams.categories && teams.categories[category] === false));
+  }
+
   /** Testmeldung — wird serverseitig ohne Sammel-Wartezeit verschickt. */
   function sendTest() {
     SSD.Store.commit('Teams-Testnachricht', (draft) => {
@@ -82,5 +89,5 @@ SSD.NotificationService = (function () {
     }, { trackHistory: false });
   }
 
-  return { CATEGORIES, add, sendTest, dutyLabel, names, personName, isUpcoming, withDetails };
+  return { CATEGORIES, add, isActive, sendTest, dutyLabel, names, personName, isUpcoming, withDetails };
 })();

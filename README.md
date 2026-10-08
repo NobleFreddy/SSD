@@ -327,9 +327,11 @@ Sanisprecher:innen in ihrem Dashboard.
 | **Wer fehlt noch?** | wer noch keine Verfügbarkeit eingetragen bzw. sie seit einem Stichtag (Halbjahresbeginn) nicht aktualisiert hat; „Erinnern“ zeigt der Person beim Anmelden einen Hinweis, bis sie ihre Verfügbarkeit ändert oder bestätigt | ✓ | ✓ |
 | **Engagement-Übersicht** | je Person geleistete Dienste (davon eingesprungen), Veranstaltungen, erledigte Aufgaben, besuchte Teamtreffen — gezählt bis heute, z. B. als Grundlage für Zeugnisbemerkungen; CSV-Export | ✓ inkl. **Nachweis drucken** (eine Seite pro Person zum Unterschreiben) | ✓ (ohne Nachweise) |
 
-Pinnwand, Teamtreffen, Erinnerungen und Freischaltungen erzeugen bewusst
-**keine** Teams-Meldungen. Aufgaben und aufgefüllte Lücken melden — wie
-bisher — die bestehenden Teams-Kategorien „Aufgaben“ bzw. „Dienstplan“.
+Neue Teamtreffen kündigt die Teams-Kategorie „Teamtreffen“ an (siehe
+[Teams-Benachrichtigungen](#teams-benachrichtigungen)). Pinnwand,
+Erinnerungen und Freischaltungen erzeugen bewusst **keine** Teams-Meldungen.
+Aufgaben und aufgefüllte Lücken melden — wie bisher — die bestehenden
+Teams-Kategorien „Aufgaben“ bzw. „Dienstplan“.
 Abwesenheitsgründe (z. B. Krankheit) fließen nirgends in die
 Engagement-Übersicht ein; vergangene Dienste werden beim Auffüllen nie
 nachträglich besetzt.
@@ -365,8 +367,11 @@ nacheinander bearbeitete Dienste nicht zehn Nachrichten erzeugen. Gemeldet
 werden (einzeln abschaltbar unter *Einstellungen → Microsoft Teams*):
 Dienstplan (neu erstellt/übertragen, Lücken aufgefüllt, manuelle Änderungen an
 kommenden Diensten), Vertretungen (eingetragen, automatisch eingeteilt,
-„Vertretung gesucht“, offene Dienste selbst übernommen), Veranstaltungen,
-Aufgaben und Material.
+„Vertretung gesucht“, offene Dienste selbst übernommen), Teamtreffen (neue
+kommende Treffen mit den ersten Punkten der Tagesordnung; bei kommenden
+Treffen außerdem geänderte Zeit/Ort und Absagen — nachträglich erfasste
+Treffen und einzelne Zu-/Absagen nicht), Veranstaltungen, Aufgaben und
+Material.
 
 **So funktioniert es:** Die App legt jede Meldung im selben Speichervorgang
 wie die eigentliche Änderung in `teamsOutbox` ab
@@ -374,7 +379,8 @@ wie die eigentliche Änderung in `teamsOutbox` ab
 wird die Änderung rückgängig gemacht, verschwindet auch die Meldung. Den
 Versand übernimmt die Datenbank selbst: Ein `pg_cron`-Job ruft jede Minute
 `ssd_private.send_teams_digest()` auf (Supabase-Migration
-`ssd_teams_notifications`), der neue Meldungen sammelt und als Adaptive Card
+`ssd_teams_notifications`, Kategorie „Teamtreffen“ ergänzt in
+`ssd_teams_meeting_category`), der neue Meldungen sammelt und als Adaptive Card
 per `pg_net` an einen Teams-Workflow schickt. Das Ergebnis (gesendet/Fehler/
 wartend) steht in der lesbaren Tabelle `ssd_teams_status` und wird in den
 Einstellungen angezeigt. Pro Stunde gehen höchstens 12 Nachrichten raus;

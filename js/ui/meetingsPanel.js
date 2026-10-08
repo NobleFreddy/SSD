@@ -47,6 +47,7 @@ SSD.MeetingsPanel = (function () {
     const locationInput = U.el('input', { class: 'input', value: existing?.location || '', placeholder: 'z. B. Sanitätsraum' });
     const agendaInput = U.el('textarea', { class: 'input', rows: '4', placeholder: 'Themen, Mitbringen, …' }, [existing?.agenda || '']);
     const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
+    const teamsActive = SSD.NotificationService.isActive('meeting');
 
     const body = U.el('div', { class: 'stack gap-4' }, [
       errorBox,
@@ -58,7 +59,12 @@ SSD.MeetingsPanel = (function () {
       ]),
       field('Ort (optional)', locationInput),
       field('Tagesordnung (optional)', agendaInput),
-      U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, ['Eingeladen sind alle aktiven Sanis und Azubis. Sie sehen das Treffen im Reiter „Teamtreffen“ und sagen dort zu oder ab.']),
+      U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, [
+        'Eingeladen sind alle aktiven Sanis und Azubis. Sie sehen das Treffen im Reiter „Teamtreffen“ und sagen dort zu oder ab.',
+        teamsActive ? (isEdit
+          ? ' Ändern sich bei einem kommenden Treffen Datum, Uhrzeit oder Ort, wird das im Teams-Kanal gemeldet.'
+          : ' Kommende Treffen werden außerdem im Teams-Kanal angekündigt.') : '',
+      ]),
     ]);
 
     const footerButtons = [{ label: 'Abbrechen', variant: 'secondary' }];
@@ -66,7 +72,11 @@ SSD.MeetingsPanel = (function () {
       footerButtons.push({
         label: 'Löschen', variant: 'danger', closeOnClick: false,
         onClick: async () => {
-          const ok = await SSD.Dialog.confirm({ title: 'Teamtreffen löschen', danger: true, message: `"${existing.title}" inkl. aller Zu-/Absagen und der Anwesenheit wirklich löschen?` });
+          const announced = teamsActive && existing.date >= U.toIsoDate(U.today());
+          const ok = await SSD.Dialog.confirm({
+            title: 'Teamtreffen löschen', danger: true,
+            message: `"${existing.title}" inkl. aller Zu-/Absagen und der Anwesenheit wirklich löschen?${announced ? ' Die Absage wird im Teams-Kanal gemeldet.' : ''}`,
+          });
           if (!ok) return;
           try {
             M.remove(existing.id);
