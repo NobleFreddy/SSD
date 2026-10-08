@@ -29,7 +29,10 @@ SSD.Models = (function () {
 
   const AVAILABILITY_STATES = ['available', 'unavailable', 'blocked'];
 
+  // "n" = keine Angabe: Das Geschlecht wird nur für die Gewichtung "gemischte Teams"
+  // genutzt; ohne Angabe zählt die Person dort weder als gleich noch als verschieden.
   const GENDERS = [
+    { key: 'n', label: 'Keine Angabe' },
     { key: 'w', label: 'Weiblich' },
     { key: 'm', label: 'Männlich' },
     { key: 'd', label: 'Divers' },
@@ -73,14 +76,12 @@ SSD.Models = (function () {
     return Object.assign(
       {
         id: U.generateId('stu'),
-        username: '',
-        passwordHash: '',
-        salt: '',
+        username: '', // Passwörter liegen nur serverseitig (bcrypt), nie im Datenbestand
         firstName: '',
         lastName: '',
         role: 'student', // 'student' | 'azubi'
         leadershipRole: null, // null | 'sanisprecher' | 'vize_sanisprecher'
-        gender: 'd',
+        gender: 'n',
         schoolClass: '',
         yearGroup: null, // Abijahrgang, z. B. 2028; null = nicht angegeben
         preferredPartnerIds: [], // Wunschpartner:innen (max. 3, nur Kategorie "student")
@@ -161,26 +162,56 @@ SSD.Models = (function () {
       // Meldet sich jemand selbst ab ("Ich falle aus"), teilt die App sofort eine
       // verfügbare Vertretung ein; aus = Dienst bleibt als "Vertretung gesucht" offen.
       autoSubstitution: true,
+      // Engagement-Übersicht (Zahlen aller Personen) auch für Sanisprecher:innen — entscheidet die Schule.
+      leadsSeeEngagement: true,
       weights: createDefaultWeights(),
       yearGroupMode: 'none', // 'none' | 'mixed' | 'same'
       yearGroupRules: [], // { id, a, b, type: 'prefer' | 'avoid' } — a/b = Abijahrgang
       pairRules: [], // { id, a, b, type: 'prefer' | 'never' } — a/b = Personen-IDs
-      registrationCodeHash: null, // gesalzener Hash des Schulcodes (nie im Klartext)
-      registrationCodeSalt: null,
+      // Der Schulcode liegt wie alle Passwörter nur serverseitig (ssd_set_registration_code).
       teams: createDefaultTeamsSettings(),
+      privacy: createDefaultPrivacySettings(),
+      retention: createDefaultRetentionSettings(),
     };
   }
 
   /**
    * Teams-Benachrichtigungen. Die geheime Workflow-Adresse und der Link für
-   * den Button in der Teams-Nachricht stehen bewusst NICHT hier (der
-   * Datenbestand ist öffentlich les- und schreibbar), sondern im Supabase Vault.
+   * den Button in der Teams-Nachricht stehen bewusst NICHT hier, sondern im
+   * Supabase Vault. `nameStyle`: 'short' = "Lena C." (Datensparsamkeit), 'full' = voller Name.
    */
   function createDefaultTeamsSettings() {
     return {
       enabled: false,
+      nameStyle: 'short',
       categories: { schedule: true, substitution: true, meeting: true, event: true, task: true, material: true },
     };
+  }
+
+  /**
+   * Angaben für die Datenschutzhinweise (Seite "Datenschutz", ohne Anmeldung
+   * erreichbar). Füllt die Schule in den Einstellungen aus.
+   * legalBasis: 'school' (Schulgesetz) | 'consent' (Einwilligung) | 'custom' (eigener Text).
+   */
+  function createDefaultPrivacySettings() {
+    return {
+      controller: '', // Name und Anschrift der Schule
+      contact: '', // Ansprechperson, z. B. betreuende Lehrkraft
+      dpo: '', // Kontakt der/des Datenschutzbeauftragten
+      authority: '', // zuständige Aufsichtsbehörde
+      legalBasis: 'school',
+      legalBasisText: '',
+      imprintUrl: '',
+    };
+  }
+
+  /**
+   * Aufbewahrung: Dienst-, Vertretungs- und Teamdaten eines Schuljahres
+   * (1.8.–31.7.) werden `graceMonths` Monate nach Schuljahresende gelöscht —
+   * Zeit genug, um vorher die Engagement-Nachweise zu drucken.
+   */
+  function createDefaultRetentionSettings() {
+    return { graceMonths: 2, auto: true, lastRunAt: null };
   }
 
   function createScheduleEntry(overrides = {}) {
@@ -358,6 +389,8 @@ SSD.Models = (function () {
     createDefaultDutyBlockConfig,
     createDefaultWeights,
     createDefaultTeamsSettings,
+    createDefaultPrivacySettings,
+    createDefaultRetentionSettings,
     createDefaultSettings,
     createScheduleEntry,
     createEvent,

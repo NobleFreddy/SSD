@@ -29,9 +29,17 @@ SSD.NotificationService = (function () {
     { key: 'material', label: 'Material', hint: 'Neue Materialanfragen und Statusänderungen.' },
   ];
 
+  /**
+   * Name in Teams-Meldungen — standardmäßig datensparsam "Lena C." (Einstellung
+   * "Namen in den Nachrichten"), auf Wunsch der volle Name.
+   */
   function personName(id) {
     const s = id && SSD.StudentService.getById(id);
-    return s ? SSD.StudentService.fullName(s) : '(gelöscht)';
+    if (!s) return '(gelöscht)';
+    const teams = (SSD.Store.getState().settings || {}).teams || {};
+    if (teams.nameStyle === 'full') return SSD.StudentService.fullName(s);
+    const initial = String(s.lastName || '').trim().charAt(0);
+    return initial ? `${s.firstName} ${initial}.` : s.firstName;
   }
 
   function names(ids) {

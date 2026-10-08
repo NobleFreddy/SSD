@@ -115,9 +115,10 @@ SSD.ImportExport = (function () {
     // Felder immer ohne Leerzeichen am Rand — aus Excel kommen z. B. "anna.m " oder " 10b" vor;
     // ein Benutzername mit Leerzeichen am Ende ließe sich sonst nie anmelden.
     const cell = (row, name) => (idx(name) >= 0 ? String(row[idx(name)] ?? '').trim() : '');
+    // Unbekannte Angaben werden "keine Angabe" — nicht fälschlich "divers".
     const genderKey = (value) => {
       const first = value.toLowerCase().charAt(0);
-      return ['w', 'm', 'd'].includes(first) ? first : 'd';
+      return ['w', 'm', 'd'].includes(first) ? first : 'n';
     };
     const positiveIntOrNull = (value) => {
       const n = Number(value);

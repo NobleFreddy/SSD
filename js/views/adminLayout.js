@@ -71,6 +71,10 @@ SSD.Views.AdminLayout = (function () {
           ]),
         ]),
         U.el('button', {
+          class: 'nav-item', html: SSD.Icons.svg('shield'),
+          onClick: () => { SSD.Router.navigate('/datenschutz'); shell.classList.remove('is-mobile-nav-open'); },
+        }, ['Datenschutzhinweise']),
+        U.el('button', {
           class: 'nav-item', 'data-tooltip': 'Abmelden', html: SSD.Icons.svg('logout'),
           onClick: async () => {
             const ok = await SSD.Dialog.confirm({ title: 'Abmelden', message: 'Möchten Sie sich wirklich abmelden?', confirmLabel: 'Abmelden' });
@@ -134,6 +138,9 @@ SSD.Views.AdminLayout = (function () {
     shell.appendChild(overlay);
     shell.appendChild(mainArea);
     container.appendChild(shell);
+
+    // Aufbewahrungsfristen: einmal pro Sitzung Abgelaufenes löschen (abschaltbar unter Einstellungen → Aufbewahrung)
+    setTimeout(() => SSD.RetentionService.autoApplyIfDue(), 0);
 
     return {
       contentEl: inner,

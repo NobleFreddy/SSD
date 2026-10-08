@@ -35,7 +35,7 @@ SSD.Views.AdminMaterials = (function () {
     const isEdit = !!existing;
     const nameInput = U.el('input', { class: 'input', value: existing?.name || '', placeholder: 'z. B. Einmalhandschuhe Größe M' });
     const quantityInput = U.el('input', { class: 'input', value: existing?.quantity || '', placeholder: 'z. B. 2 Packungen' });
-    const noteInput = U.el('textarea', { class: 'input', rows: '2' }, [existing?.note || '']);
+    const noteInput = U.el('textarea', { class: 'input', rows: '2', placeholder: U.FREE_TEXT_HINT }, [existing?.note || '']);
     const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
 
     const body = U.el('div', { class: 'stack gap-4' }, [

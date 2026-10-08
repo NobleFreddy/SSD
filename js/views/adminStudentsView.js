@@ -34,15 +34,18 @@ SSD.Views.AdminStudents = (function () {
     const firstNameInput = U.el('input', { class: 'input', value: existing?.firstName || '' });
     const lastNameInput = U.el('input', { class: 'input', value: existing?.lastName || '' });
     const usernameInput = U.el('input', { class: 'input', value: existing?.username || '', autocomplete: 'off' });
-    const passwordInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: isEdit ? 'Unverändert lassen' : '' });
+    const passwordInput = U.el('input', { class: 'input', autocomplete: 'off', spellcheck: 'false', placeholder: isEdit ? 'Unverändert lassen' : `mind. ${SSD.Auth.PASSWORD_MIN_LENGTH} Zeichen` });
+    if (!isEdit) passwordInput.value = SSD.Auth.generateInitialPassword();
+    const generateBtn = U.el('button', { type: 'button', class: 'btn btn--secondary', 'data-tooltip': 'Zufälliges Startpasswort', 'aria-label': 'Zufälliges Startpasswort', html: SSD.Icons.svg('refresh', { size: 15 }) });
+    generateBtn.addEventListener('click', () => { passwordInput.value = SSD.Auth.generateInitialPassword(); passwordInput.focus(); });
 
     const roleSelect = U.el('select', { class: 'select' }, SSD.Models.ROLES.map((r) => U.el('option', { value: r.key, selected: (existing?.role || 'student') === r.key }, [r.label])));
-    const genderSelect = U.el('select', { class: 'select' }, SSD.Models.GENDERS.map((g) => U.el('option', { value: g.key, selected: existing?.gender === g.key || (!existing && g.key === 'd') }, [g.label])));
+    const genderSelect = U.el('select', { class: 'select' }, SSD.Models.GENDERS.map((g) => U.el('option', { value: g.key, selected: existing?.gender === g.key || (!existing && g.key === 'n') }, [g.label])));
     const classInput = U.el('input', { class: 'input', value: existing?.schoolClass || '', placeholder: 'z. B. 10a' });
     const yearInput = U.el('input', { class: 'input', type: 'number', value: existing?.yearGroup || '', placeholder: `z. B. ${U.schoolYearEnd() + 2}` });
     const maxDutiesInput = U.el('input', { class: 'input', type: 'number', min: '0', value: existing?.maxDutiesPerWeek ?? '', placeholder: `Standard (${settings.maxDutiesPerWeek})` });
-    const notesInput = U.el('textarea', { class: 'input', rows: '2' }, [existing?.notes || '']);
-    const adminMessageInput = U.el('textarea', { class: 'input', rows: '2', placeholder: 'Wird dem Schüler im Dashboard angezeigt' }, [existing?.adminMessage || '']);
+    const notesInput = U.el('textarea', { class: 'input', rows: '2', placeholder: SSD.Utils.FREE_TEXT_HINT }, [existing?.notes || '']);
+    const adminMessageInput = U.el('textarea', { class: 'input', rows: '2', placeholder: 'Wird der Person im Dashboard angezeigt' }, [existing?.adminMessage || '']);
     const activeCheckbox = U.el('input', { type: 'checkbox' });
     activeCheckbox.checked = existing ? existing.active : true;
 
@@ -53,19 +56,20 @@ SSD.Views.AdminStudents = (function () {
       U.el('div', { class: 'grid grid-cols-2' }, [field('Vorname', firstNameInput), field('Nachname', lastNameInput)]),
       U.el('div', { class: 'grid grid-cols-2' }, [
         field('Benutzername', usernameInput, 'Zum Anmelden im Schülerbereich.'),
-        field(isEdit ? 'Neues Passwort' : 'Passwort', passwordInput),
+        field(isEdit ? 'Neues Passwort' : 'Startpasswort', U.el('div', { class: 'cluster gap-2', style: 'flex-wrap:nowrap;' }, [passwordInput, generateBtn]),
+          'Bitte der Person persönlich mitteilen — sie muss es bei der ersten Anmeldung ändern.'),
       ]),
       U.el('div', { class: 'grid grid-cols-2' }, [
         field('Kategorie', roleSelect, 'Azubis erhalten keine Zweier-Zuteilung, sondern werden einzeln als dritte Person zu Diensten hinzugefügt.'),
-        field('Geschlecht', genderSelect),
+        field('Geschlecht (freiwillig)', genderSelect, 'Nur für die Gewichtung „gemischte Teams“.'),
       ]),
       U.el('div', { class: 'grid grid-cols-2' }, [
         field('Klasse', classInput),
         field('Abijahrgang', yearInput, 'Jahr des Abiturs — wird für Abijahrgangs-Regeln der Verteilung genutzt.'),
       ]),
       field('Maximale Dienste pro Woche', maxDutiesInput, 'Leer lassen für den globalen Standardwert.'),
-      field('Bemerkungen (nur für Administratoren sichtbar)', notesInput),
-      field('Persönlicher Hinweis an den Schüler', adminMessageInput, 'Erscheint im Dashboard des Schülers.'),
+      field('Bemerkungen', notesInput, `Sichtbar für die Administration und die Person selbst. ${SSD.Utils.FREE_TEXT_HINT}`),
+      field('Persönlicher Hinweis', adminMessageInput, `Erscheint im Dashboard der Person. ${SSD.Utils.FREE_TEXT_HINT}`),
       existing && (existing.role || 'student') === 'student' ? U.el('div', { class: 'field' }, [
         U.el('label', { class: 'field__label' }, ['Wunschpartner:innen (selbst gewählt)']),
         U.el('div', { class: 'cluster gap-2' }, SSD.StudentService.getPreferredPartners(existing).length
@@ -122,8 +126,9 @@ SSD.Views.AdminStudents = (function () {
         if (!U.Validate.required(data.lastName)) problems.push('Bitte einen Nachnamen eingeben.');
         if (!U.Validate.usernameFormat(data.username)) problems.push('Benutzername: 3–32 Zeichen, nur Buchstaben/Zahlen/._-');
         else if (SSD.Auth.isUsernameTaken(data.username, existing?.id)) problems.push('Dieser Benutzername ist bereits vergeben.');
-        if (!isEdit && !U.Validate.minLength(passwordInput.value, 6)) problems.push('Das Passwort muss mindestens 6 Zeichen lang sein.');
-        if (isEdit && passwordInput.value && !U.Validate.minLength(passwordInput.value, 6)) problems.push('Das neue Passwort muss mindestens 6 Zeichen lang sein.');
+        const minLength = SSD.Auth.PASSWORD_MIN_LENGTH;
+        if (!isEdit && !U.Validate.minLength(passwordInput.value, minLength)) problems.push(`Das Passwort muss mindestens ${minLength} Zeichen lang sein.`);
+        if (isEdit && passwordInput.value && !U.Validate.minLength(passwordInput.value, minLength)) problems.push(`Das neue Passwort muss mindestens ${minLength} Zeichen lang sein.`);
 
         if (problems.length) {
           errorBox.textContent = problems[0];
@@ -131,14 +136,20 @@ SSD.Views.AdminStudents = (function () {
           return;
         }
 
-        if (isEdit) {
-          data.active = activeCheckbox.checked;
-          SSD.StudentService.update(existing.id, data);
-          if (passwordInput.value) await SSD.StudentService.resetPassword(existing.id, passwordInput.value);
-          SSD.Toast.success('Gespeichert', `${data.firstName} ${data.lastName} wurde aktualisiert.`);
-        } else {
-          await SSD.StudentService.create({ ...data, password: passwordInput.value });
-          SSD.Toast.success('Angelegt', `${data.firstName} ${data.lastName} wurde hinzugefügt.`);
+        try {
+          if (isEdit) {
+            data.active = activeCheckbox.checked;
+            SSD.StudentService.update(existing.id, data);
+            if (passwordInput.value) await SSD.StudentService.resetPassword(existing.id, passwordInput.value);
+            SSD.Toast.success('Gespeichert', `${data.firstName} ${data.lastName} wurde aktualisiert.`);
+          } else {
+            await SSD.StudentService.create({ ...data, password: passwordInput.value });
+            SSD.Toast.success('Angelegt', `${data.firstName} ${data.lastName} wurde hinzugefügt. Startpasswort bitte persönlich mitteilen.`);
+          }
+        } catch (err) {
+          errorBox.textContent = String(err.message || err);
+          errorBox.style.display = 'flex';
+          return;
         }
         handle.close();
       },
@@ -166,22 +177,62 @@ SSD.Views.AdminStudents = (function () {
     }
     if (!rows.length) { SSD.Toast.warning('Keine Daten gefunden', 'Die CSV-Datei enthält keine gültigen Schülerzeilen.'); return; }
 
+    const minLength = SSD.Auth.PASSWORD_MIN_LENGTH;
     const ok = await SSD.Dialog.confirm({
       title: 'Schüler:innen importieren',
-      message: `${rows.length} Schüler:innen werden neu angelegt. Zeilen ohne Passwort-Spalte erhalten den Benutzernamen als Startpasswort. Fortfahren?`,
+      message: `${rows.length} Schüler:innen werden neu angelegt. Zeilen ohne Passwort erhalten ein zufälliges Startpasswort (Liste folgt), Passwörter unter ${minLength} Zeichen werden ersetzt. Alle müssen ihr Passwort bei der ersten Anmeldung ändern. Fortfahren?`,
       confirmLabel: `${rows.length} importieren`,
     });
     if (!ok) return;
 
-    let created = 0, skipped = 0;
+    const entries = [];
+    const generated = [];
+    let skipped = 0;
+    const taken = new Set();
     for (const row of rows) {
       const username = (row.username || U.slugifyUsername(`${row.firstName}.${row.lastName}`).slice(0, 32)).trim();
       // Gleiche Regeln wie beim Anlegen per Formular — sonst entstünden Konten, mit denen sich niemand anmelden kann.
-      if (!U.Validate.usernameFormat(username) || SSD.Auth.isUsernameTaken(username)) { skipped++; continue; }
-      await SSD.StudentService.create({ ...row, username, password: row.password || username });
-      created++;
+      if (!U.Validate.usernameFormat(username) || SSD.Auth.isUsernameTaken(username) || taken.has(username.toLowerCase())) { skipped++; continue; }
+      taken.add(username.toLowerCase());
+      const password = row.password && row.password.length >= minLength ? row.password : SSD.Auth.generateInitialPassword();
+      if (password !== row.password) generated.push({ name: `${row.firstName} ${row.lastName}`.trim(), username, password });
+      entries.push({ ...row, username, password });
     }
-    SSD.Toast.success('Import abgeschlossen', `${created} angelegt, ${skipped} übersprungen (Duplikate/ungültig).`);
+
+    SSD.Toast.info('Import läuft', `${entries.length} Konten werden angelegt …`);
+    const { failed } = await SSD.StudentService.createMany(entries);
+    SSD.Toast.success('Import abgeschlossen', `${entries.length - failed.length} angelegt, ${skipped} übersprungen (Duplikate/ungültig)${failed.length ? `, ${failed.length} ohne Passwort` : ''}.`);
+    if (generated.length) showInitialPasswords(generated.filter((g) => !failed.some((f) => f.student.username === g.username)));
+  }
+
+  /** Einmalige Anzeige der erzeugten Startpasswörter (werden nirgends gespeichert). */
+  function showInitialPasswords(list) {
+    if (!list.length) return;
+    const text = list.map((g) => [g.name, g.username, g.password].join('\t')).join('\n');
+    const copyBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('copy', { size: 15 }) }, ['Liste kopieren']);
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(['Name\tBenutzername\tStartpasswort', text].join('\n'));
+        SSD.Toast.success('Kopiert', 'Die Liste liegt in der Zwischenablage.');
+      } catch (err) {
+        SSD.Toast.warning('Kopieren nicht möglich', 'Bitte die Tabelle markieren und manuell kopieren.');
+      }
+    });
+    const table = U.el('table', { class: 'table' }, [
+      U.el('thead', {}, [U.el('tr', {}, [U.el('th', {}, ['Name']), U.el('th', {}, ['Benutzername']), U.el('th', {}, ['Startpasswort'])])]),
+      U.el('tbody', {}, list.map((g) => U.el('tr', {}, [U.el('td', {}, [g.name]), U.el('td', {}, [g.username]), U.el('td', { style: 'font-family:var(--font-mono, monospace);' }, [g.password])]))),
+    ]);
+    SSD.Dialog.open({
+      title: 'Startpasswörter',
+      wide: true,
+      body: U.el('div', { class: 'stack gap-3' }, [
+        U.el('p', { style: 'margin:0;' }, ['Diese Passwörter werden nur jetzt angezeigt und nirgends gespeichert. Bitte jeder Person persönlich mitteilen — bei der ersten Anmeldung muss sie ein eigenes Passwort wählen. Ausdrucke oder kopierte Listen danach vernichten bzw. löschen.']),
+        U.el('div', { class: 'table-wrap' }, [table]),
+        U.el('div', {}, [copyBtn]),
+      ]),
+      footerButtons: [{ label: 'Fertig', variant: 'primary' }],
+      closeOnOverlayClick: false,
+    });
   }
 
   /* ---------------------------------------------------------------------

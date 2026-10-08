@@ -44,7 +44,7 @@ SSD.AnnouncementBoard = (function () {
     const body = U.el('div', { class: 'stack gap-4' }, [
       errorBox,
       field('Titel', titleInput),
-      field('Text (optional)', textInput),
+      field('Text (optional)', textInput, U.FREE_TEXT_HINT),
       U.el('div', { class: 'grid grid-cols-2' }, [
         field('Sichtbar bis (optional)', untilInput, 'Danach verschwindet der Beitrag für die Sanis automatisch.'),
         U.el('div', { class: 'field' }, [

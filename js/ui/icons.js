@@ -79,6 +79,7 @@ SSD.Icons = (function () {
     pin: '<path d="M12 16.5v5"/><path d="M8.5 3h7l-1 6 3.5 3.5V15h-12v-2.5L9.5 9l-1-6z"/>',
     award: '<circle cx="12" cy="9" r="5.5"/><path d="M8.6 13.4L7 21l5-2.6 5 2.6-1.6-7.6"/>',
     calendarCheck: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M9 15.2l2 2 4-4"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/>',
   };
 
   /**

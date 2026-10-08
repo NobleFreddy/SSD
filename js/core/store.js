@@ -28,27 +28,49 @@ SSD.Store = (function () {
 
   const MAX_HISTORY = 60;
 
-  let state = null;
+  let state = null; // erst nach der Anmeldung geladen; vorher gibt es nur `publicInfo`
+  let publicInfo = null; // { setupComplete, schoolName, selfRegistration, hasRegistrationCode, privacy, retention, teamsEnabled }
   let undoStack = []; // { label, snapshot }
   let redoStack = [];
   let dirty = false; // true, wenn bei deaktiviertem Auto-Save ungespeicherte Änderungen bestehen
   let saveLoop = null; // laufender Speichervorgang (Promise) — es speichert immer nur einer gleichzeitig
   let saveAgain = false; // während des Speicherns kamen weitere Änderungen hinzu
   let deferredRemote = null; // während des Speicherns eingetroffene Realtime-Änderung { data, version }
+  let unsubscribeRemote = null;
 
-  /** Lädt den Anfangszustand aus Supabase und richtet die Live-Synchronisierung ein. */
-  async function init() {
+  window.addEventListener('beforeunload', (e) => {
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  function setPublicInfo(info) { publicInfo = info || null; }
+  function getPublicInfo() { return publicInfo || {}; }
+
+  /**
+   * Lädt nach der Anmeldung den Stand, den die angemeldete Person sehen darf,
+   * und richtet die Live-Synchronisierung ein. Wirft bei ungültiger Sitzung
+   * einen Fehler mit `sessionExpired`.
+   */
+  async function load() {
     state = await SSD.Storage.load();
-    if (!state) state = SSD.Models.createDefaultAppData();
-
-    window.addEventListener('beforeunload', (e) => {
-      if (dirty) { e.preventDefault(); e.returnValue = ''; }
-    });
-
-    SSD.Storage.subscribeToRemoteChanges(applyRemoteState);
-
+    undoStack = [];
+    redoStack = [];
+    dirty = false;
+    if (!unsubscribeRemote) unsubscribeRemote = SSD.Storage.subscribeToRemoteChanges(applyRemoteState);
     return state;
   }
+
+  /** Abmelden: nichts von den Daten bleibt im Speicher dieses Tabs. */
+  function clear() {
+    if (unsubscribeRemote) { unsubscribeRemote(); unsubscribeRemote = null; }
+    state = null;
+    undoStack = [];
+    redoStack = [];
+    dirty = false;
+    deferredRemote = null;
+    SSD.Storage.forget();
+  }
+
+  function isLoaded() { return !!state; }
 
   /** Übernimmt eine per Realtime empfangene fremde Änderung — siehe Modulbeschreibung oben. */
   function applyRemoteState(newData, newVersion) {
@@ -118,12 +140,23 @@ SSD.Store = (function () {
       // eigenen Speicherung trägt dieselbe Versionsnummer und wird verworfen).
       if (remote && remote.version > SSD.Storage.getKnownVersion()) applyRemoteState(remote.data, remote.version);
     } else if (result.conflict) {
-      // Wie bisher: Den Stand der anderen Person übernehmen, damit weitere Änderungen
-      // wieder gespeichert werden können; der Hinweis bittet um erneute Eingabe.
-      if (remote) applyRemoteState(remote.data, remote.version);
+      // Den Stand der anderen Person übernehmen (liefert der Server gleich mit), damit
+      // weitere Änderungen wieder gespeichert werden können; der Hinweis bittet um erneute Eingabe.
+      const latest = result.remote || remote;
+      if (latest) applyRemoteState(latest.data, latest.version);
       SSD.EventBus.emit('store:conflict', {});
     }
     return result;
+  }
+
+  /**
+   * Wartet, bis der aktuelle Stand gespeichert ist — auch bei abgeschaltetem
+   * Auto-Save (z. B. bevor für eine neu angelegte Person ein Passwort gesetzt
+   * wird, das der Server nur für gespeicherte Personen annimmt).
+   */
+  async function flush() {
+    const result = await persist();
+    return result.ok;
   }
 
   function isDirty() { return dirty; }
@@ -133,7 +166,8 @@ SSD.Store = (function () {
   }
 
   function isSetupComplete() {
-    return !!(state && state.meta && state.meta.setupComplete && state.admin);
+    if (state) return !!(state.meta && state.meta.setupComplete && state.admin);
+    return !!(publicInfo && publicInfo.setupComplete);
   }
 
   /**
@@ -215,8 +249,9 @@ SSD.Store = (function () {
   }
 
   return {
-    init, getState, isSetupComplete,
-    commit, replaceState,
+    load, clear, isLoaded, setPublicInfo, getPublicInfo,
+    getState, isSetupComplete,
+    commit, replaceState, flush,
     undo, redo, canUndo, canRedo, peekUndoLabel, peekRedoLabel,
     forceSave, isDirty,
   };

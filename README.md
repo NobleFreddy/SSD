@@ -20,7 +20,7 @@ live aktuellen Stand sehen (siehe [Datenmodell & Datenhaltung](#datenmodell--dat
 - [Import / Export](#import--export)
 - [Bereitstellung im Schulnetzwerk](#bereitstellung-im-schulnetzwerk)
 - [Teams-Benachrichtigungen](#teams-benachrichtigungen)
-- [Sicherheit — bitte lesen](#sicherheit--bitte-lesen)
+- [Datenschutz & Sicherheit](#datenschutz--sicherheit)
 - [Erweiterbarkeit](#erweiterbarkeit)
 
 ## Schnellstart
@@ -78,7 +78,7 @@ css/
   print.css                  Druckansicht / PDF-Export
 js/
   core/                      Utils, Datenmodelle, Storage, State-Store (Undo/Redo)
-  auth/                      Login, Sitzungen, Passwort-Hashing
+  auth/                      Login, Sitzungen (Prüfung serverseitig, siehe supabase/)
   modules/                   Fachlogik: Schüler, Kalender, Einstellungen,
                               *Scheduler (Optimierungsalgorithmus)*, Statistik,
                               Import/Export
@@ -87,6 +87,8 @@ js/
   views/                     Eine Datei je Bildschirm (Login, Setup,
                               Schülerbereich, Admin-Unteransichten)
   app.js                     Bootstrap: verdrahtet Module & startet den Router
+vendor/supabase-js/          mitgelieferte Supabase-Bibliothek (kein CDN)
+supabase/migrations/         Datenbankfunktionen für Anmeldung & Zugriffsschutz
 ```
 
 **Warum kein Framework/TypeScript-Build?** Die Anwendung soll laut
@@ -96,9 +98,11 @@ installiert ist. Reines JavaScript mit klaren Modulgrenzen, JSDoc-Kommentaren
 und strikter Trennung der Zuständigkeiten erreicht dieselbe Wartbarkeit ohne
 diese Hürde.
 
-**Warum keine externen Bibliotheken/CDNs?** Damit die App wirklich
-*vollständig lokal* funktioniert (auch ganz ohne Internetzugang), sind
-Diagramme als handgeschriebene SVG-Komponenten umgesetzt
+**Warum keine externen Bibliotheken/CDNs?** Damit beim Aufruf keine Daten
+(z. B. IP-Adressen) an Dritte gehen und die App ohne fremde Server
+auskommt, liegt die einzige Bibliothek (supabase-js) unverändert unter
+[`vendor/supabase-js`](vendor/supabase-js), und die übrigen Funktionen sind
+selbst umgesetzt: Diagramme als handgeschriebene SVG-Komponenten
 ([`js/ui/charts.js`](js/ui/charts.js)), der Excel-Export nutzt einen
 HTML-Tabellen-Trick mit `.xls`-Endung, und der PDF-Export erfolgt über eine
 gestylte Druckansicht (`window.print()` → „Als PDF speichern“ im
@@ -161,15 +165,15 @@ Abdeckung (möglichst viele besetzte Dienste) wird dafür nie geopfert.
 
 ## Vertretungsmodus
 
-Für kurzfristige Ausfälle (Krankheit, Klassenfahrt, spontane Abwesenheit)
-gibt es einen zweiten, gezielteren Algorithmus in
+Für kurzfristige Ausfälle gibt es einen zweiten, gezielteren Algorithmus in
 [`js/modules/substitutionService.js`](js/modules/substitutionService.js):
 Statt den gesamten Dienstplan neu zu berechnen, wird **ausschließlich** für
 die betroffenen Dienste der ausgefallenen Person(en) eine Ersatzperson
 gesucht — der Rest des Plans bleibt unangetastet.
 
 - **Zugang:** Button „Abwesenheit melden" auf der Dienstplan-Seite (eine
-  oder mehrere Personen, ein Datumsbereich), oder direkt aus dem
+  oder mehrere Personen, ein Datumsbereich — ein Grund wird bewusst nicht
+  abgefragt, „Krankheit“ wäre eine Gesundheitsangabe), oder direkt aus dem
   Bearbeiten-Dialog eines einzelnen Dienstes heraus ("Vertretung suchen").
 - **Harte Bedingungen** sind identisch zur regulären Planung (Verfügbarkeit,
   Sperrzeiten, keine Doppelbelegung, Wochen-/Gesamtlimits) — technisch durch
@@ -242,30 +246,33 @@ Neue Felder ergänzt `migrateIfNeeded` ([`js/core/storage.js`](js/core/storage.j
 beim Laden mit Standardwerten — bestehende Daten bleiben unverändert erhalten.
 
 Dieses Objekt liegt vollständig in **einer Zeile einer Supabase-Tabelle**
-(`ssd_dienstplan_state`, Spalte `data`, siehe
-[`js/core/storage.js`](js/core/storage.js)) — es gibt bewusst kein
-relationales Schema und kein eigenes Backend: Der Browser spricht direkt
-(über den öffentlichen "anon"-Schlüssel, siehe
-[`js/core/supabaseConfig.js`](js/core/supabaseConfig.js)) mit Supabase, genau
-wie er zuvor direkt mit `localStorage` gesprochen hat. Das hält die gesamte
-Fachlogik (Planungsalgorithmus, Vertretungsmodus, Statistik, …) unverändert
-einfach: Sie arbeitet weiterhin auf einem gewöhnlichen In-Memory-JavaScript-
-Objekt, nicht auf einzelnen Datenbank-Zeilen.
+(`ssd_dienstplan_state`, Spalte `data`) — es gibt bewusst kein relationales
+Schema. Die Tabelle ist für den öffentlichen Schlüssel **gesperrt**: Die App
+liest und schreibt ausschließlich über Datenbankfunktionen
+(`ssd_load`, `ssd_save`, … in
+[`supabase/migrations`](supabase/migrations)), die eine gültige Sitzung
+verlangen und je Rolle filtern bzw. zusammenführen (siehe
+[Datenschutz & Sicherheit](#datenschutz--sicherheit)). Die Fachlogik
+(Planungsalgorithmus, Vertretungsmodus, Statistik, …) arbeitet dadurch
+weiterhin einfach auf einem gewöhnlichen In-Memory-JavaScript-Objekt; die
+Datenbank kennt sie nur über [`js/core/storage.js`](js/core/storage.js).
 
 - **Automatisches Speichern:** Jede Änderung läuft über `SSD.Store.commit()`,
   das (sofern in den Einstellungen aktiviert) die Änderung sofort im
   Hintergrund nach Supabase überträgt, einen lokalen Undo/Redo-Schnappschuss
   anlegt und die UI per Event-Bus benachrichtigt.
-- **Alle Geräte sehen dieselben Daten:** Anders als bei einer reinen
-  `localStorage`-Lösung ist der Datenstand nicht mehr an einen einzelnen
-  Browser gebunden. Über Supabase Realtime werden Änderungen einer Person
-  automatisch an alle anderen gerade geöffneten Sitzungen übertragen, ohne
-  dass ein manueller Reload nötig wäre.
+- **Alle Geräte sehen dieselben Daten:** Nach jeder Änderung verschickt die
+  Datenbank per Supabase Realtime (Broadcast) nur die neue Versionsnummer —
+  keine Daten. Geöffnete Sitzungen laden daraufhin über `ssd_load` nach;
+  zusätzlich fragen sie jede Minute die Version ab, falls die
+  Live-Verbindung ausfällt. Im Browser selbst wird nichts gespeichert außer
+  der Anmeldung (sessionStorage) und der Hell/Dunkel-Einstellung.
 - **Nebenläufigkeit:** Speichern nutzt eine optimistische Versionsprüfung
   (Spalte `version`) — speichert eine Person, während eine andere
   zwischenzeitlich bereits gespeichert hat, wird die fremde Änderung nicht
-  stillschweigend überschrieben; stattdessen erscheint ein Hinweis, die Seite
-  neu zu laden. Für die kleine Nutzerzahl eines Schulteams ist das ein
+  stillschweigend überschrieben; der Server liefert stattdessen den
+  aktuellen Stand mit, und ein Hinweis bittet, die eigene Änderung zu
+  wiederholen. Für die kleine Nutzerzahl eines Schulteams ist das ein
   angemessener Kompromiss gegenüber einer vollständigen Operational-
   Transform-/CRDT-Lösung. Innerhalb eines Tabs speichert `SSD.Store`
   nacheinander: Folgen Änderungen schneller aufeinander, als eine Speicherung
@@ -277,11 +284,9 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
   letzten Änderung von einem anderen Gerät: Trifft eine fremde Änderung ein
   (z. B. eine Krankmeldung), beginnt der Verlauf neu — ein älterer
   Schnappschuss würde sie sonst beim Speichern überschreiben.
-- **Sicherheit des Zugriffs:** Die Datenbankzeile ist per Row-Level-Security
-  auf Lesen/Aktualisieren beschränkt (kein Anlegen/Löschen über den Client).
-  Der inhaltliche Zugriffsschutz (wer sich anmelden und was sehen darf)
-  erfolgt weiterhin über den Login-Bildschirm der Anwendung selbst — siehe
-  [Sicherheit — bitte lesen](#sicherheit--bitte-lesen).
+- **Sicherheit des Zugriffs:** Ohne gültige Sitzung liefert die Datenbank
+  keine personenbezogenen Daten; Passwörter stehen nicht im Datenbestand —
+  siehe [Datenschutz & Sicherheit](#datenschutz--sicherheit).
 - Regelmäßige JSON-Exports als Backup werden weiterhin empfohlen (Button
   unter *Einstellungen → Datenverwaltung*), z. B. um einen Stand vor einer
   größeren Umstellung zu sichern.
@@ -302,6 +307,14 @@ Objekt, nicht auf einzelnen Datenbank-Zeilen.
   für Pinnwand, Aufgaben und Teamtreffen — siehe
   [Team-Koordination](#team-koordination). Kein Zugriff auf Einstellungen,
   Kontenverwaltung oder die Neuberechnung des Dienstplans.
+- **Durchsetzung:** Die Oberfläche blendet aus, was eine Rolle nicht darf;
+  verbindlich prüft aber der Server beim Laden und Speichern
+  (`ssd_private.merge_incoming`): Sanis/Azubis können weder Einstellungen,
+  Kalender, Rollen, Funktionen, Freischaltungen, Bemerkungen noch fremde
+  Verfügbarkeiten ändern, keine Personen anlegen oder löschen und sehen keine
+  Bemerkungen/Hinweise zu anderen Personen. Sanisprecher:innen dürfen
+  zusätzlich wartende Registrierungen freischalten oder ablehnen und an
+  fehlende Verfügbarkeiten erinnern.
 - **Selbstregistrierung & Schulcode:** Ist unter *Einstellungen →
   Selbstregistrierung* (oder bei der Ersteinrichtung) ein Schulcode
   festgelegt, wird er bei der Registrierung abgefragt; mit dem richtigen Code
@@ -332,9 +345,9 @@ Neue Teamtreffen kündigt die Teams-Kategorie „Teamtreffen“ an (siehe
 Erinnerungen und Freischaltungen erzeugen bewusst **keine** Teams-Meldungen.
 Aufgaben und aufgefüllte Lücken melden — wie bisher — die bestehenden
 Teams-Kategorien „Aufgaben“ bzw. „Dienstplan“.
-Abwesenheitsgründe (z. B. Krankheit) fließen nirgends in die
-Engagement-Übersicht ein; vergangene Dienste werden beim Auffüllen nie
-nachträglich besetzt.
+Abwesenheitsgründe werden gar nicht erfasst; vergangene Dienste werden beim
+Auffüllen nie nachträglich besetzt. Jede:r Sani/Azubi sieht die eigenen
+Engagement-Zahlen unter *Mein Konto*.
 
 ## Import / Export
 
@@ -348,8 +361,11 @@ nachträglich besetzt.
 | Druck/PDF | Nachweise über die Mitarbeit (eine Seite pro Person) | Team → Engagement (nur Administrator) |
 
 Der CSV-Import unterstützt Massenanlage von Konten (z. B. aus einer
-Klassenliste) inkl. optionaler Passwort-Spalte; fehlt sie, wird der
-Benutzername als Startpasswort vergeben.
+Klassenliste) inkl. optionaler Passwort-Spalte. Fehlt sie oder ist ein
+Passwort kürzer als 10 Zeichen, vergibt die App ein zufälliges Startpasswort
+und zeigt die Liste einmalig an (nirgends gespeichert). Startpasswörter
+müssen bei der ersten Anmeldung geändert werden. Exporte enthalten
+personenbezogene Daten, aber keine Passwörter.
 
 ## Bereitstellung im Schulnetzwerk
 
@@ -405,58 +421,90 @@ nach einem Fehler wird nach 15 Minuten erneut versucht.
 3. In der App *Einstellungen → Microsoft Teams* → „Benachrichtigungen aktiv“
    einschalten → „Testnachricht senden“ (erscheint nach etwa einer Minute).
 
-**Datenschutz:** Die Nachrichten enthalten Namen und Dienstzeiten — bitte
-einen Kanal wählen, den nur das Sanitätsdienst-Team und die Verantwortlichen
-sehen.
+**Datenschutz:** Die Nachrichten enthalten Namen (standardmäßig nur Vorname
+und Initial, z. B. „Lena C.“ — umschaltbar unter *Namen in den Nachrichten*)
+und Dienstzeiten, aber nie Abwesenheitsgründe. Bitte einen privaten Kanal
+wählen, den nur das Sanitätsdienst-Team und die Verantwortlichen sehen, und
+die Nutzung von Teams mit der Schule abstimmen.
 
-## Sicherheit — bitte lesen
+## Datenschutz & Sicherheit
 
-Passwörter werden nicht im Klartext, sondern als gesalzener SHA-256-Hash
-gespeichert (`js/auth/auth.js`, Web-Crypto-API). Die Prüfung "wer darf sich
-anmelden und was sehen" erfolgt vollständig im Browser-JavaScript der
-Anwendung — es gibt kein eigenes Backend, das dies serverseitig
-durchsetzt. Die Supabase-Tabelle selbst ist per Row-Level-Security nur für
-Lesen/Aktualisieren freigegeben (kein Anlegen/Löschen), der dafür verwendete
-Schlüssel ist der öffentliche "anon"-Schlüssel, der bei Supabase bewusst dazu
-gedacht ist, im Client-Code zu stehen.
+**Anmeldung und Zugriff (serverseitig):**
 
-**Praktisch bedeutet das:** Jede Person, die den Schlüssel und die
-Projekt-URL kennt (beides steht offen im ausgelieferten JavaScript, siehe
-`js/core/supabaseConfig.js`), könnte technisch versiert die Datenbank auch
-direkt über die Supabase-API ansprechen und so den Login-Bildschirm
-umgehen. Dieses Schutzniveau ist für ein internes Organisationswerkzeug
-einer Schule (Namen, Klassen, Dienstzeiten — keine besonders sensiblen
-personenbezogenen Daten) angemessen, entspricht aber weiterhin **keiner
-harten Zugriffskontrolle**. Für sensiblere Anwendungsfälle wäre eine echte
-Backend-Anbindung mit Supabase Auth und pro Nutzer:in geltenden
-Row-Level-Security-Regeln erforderlich — ein deutlich größerer Umbau, der
-bei Bedarf nachträglich ergänzt werden kann, ohne die übrige Anwendung
-umschreiben zu müssen (die Fachlogik kennt die Datenbank nicht direkt,
-sondern ausschließlich über `js/core/storage.js`).
+- Passwörter prüft nur die Datenbank (`ssd_login`, bcrypt über
+  `pgcrypto`). Sie stehen nicht im Datenbestand und verlassen den Server
+  nie; Mindestlänge 10 Zeichen. Alte SHA-256-Hashes früherer Versionen
+  werden beim nächsten Login automatisch durch bcrypt ersetzt.
+- Nach dem Login erhält der Browser nur ein zufälliges Sitzungs-Token
+  (sessionStorage, endet mit dem Tab; serverseitig nach 12 Stunden). Von
+  Startpasswörtern, die der Administrator vergeben hat, verlangt die App
+  nach der Anmeldung einen Wechsel.
+- Nach 8 Fehlversuchen in 15 Minuten ist ein Benutzername gesperrt; falsche
+  Schulcodes sind ebenfalls begrenzt, Registrierungen auf 30 pro Stunde.
+- Die Tabelle `ssd_dienstplan_state` ist für den öffentlichen Schlüssel
+  gesperrt. Lesen und Schreiben laufen über `ssd_load`/`ssd_save` mit
+  Rollenprüfung (siehe [Rollen & Rechte](#rollen--rechte)). Ohne Anmeldung
+  liefert der Server nur `ssd_public_info` (Schulname, Registrierung,
+  Datenschutzangaben) — keine personenbezogenen Daten.
+- Ein Zugriffsprotokoll (Anmeldungen, Speichervorgänge, Passwortwechsel)
+  liegt in `ssd_private.audit_log` und wird nach 90 Tagen gelöscht,
+  Anmeldeversuche nach einem Tag (pg_cron-Job `ssd-housekeeping`).
+- Gelöschte oder deaktivierte Personen verlieren ihren Zugang sofort.
+- „Alle Daten zurücksetzen“ verlangt das Administrator-Passwort; der
+  Administrator-Zugang bleibt erhalten, sodass niemand die Einrichtung neu
+  starten kann.
 
-Der **Schulcode** wird wie Passwörter nur als gesalzener Hash gespeichert und
-im Browser geprüft. Er hält Außenstehende, die nur die Adresse kennen, von
-einer sofort freigeschalteten Registrierung ab — ist aber aus denselben
-Gründen eine Komfort-Hürde und keine harte Zugangskontrolle. Ein langer,
-zufällig erzeugter Code (Button „Zufällig“) ist schwerer zu erraten als ein
-kurzes Wort.
+**Datensparsamkeit und Transparenz:**
+
+- Seite **Datenschutzhinweise** (`#/datenschutz`), ohne Anmeldung
+  erreichbar und auf der Anmeldeseite verlinkt. Die schulspezifischen Angaben
+  (verantwortliche Stelle, Datenschutzbeauftragte:r, Rechtsgrundlage,
+  Aufsichtsbehörde, Impressum) trägt der Administrator unter
+  *Einstellungen → Datenschutzhinweise* ein.
+- **Aufbewahrung:** Dienste, Dienstverlauf, Teamtreffen, Veranstaltungen,
+  erledigte Aufgaben und Materialanfragen eines Schuljahres werden standardmäßig
+  zwei Monate nach Schuljahresende gelöscht (*Einstellungen → Aufbewahrung*,
+  automatisch beim Öffnen der Administration). Abgelaufene Pinnwand-Beiträge,
+  nie freigeschaltete Registrierungen und Teams-Meldungen nach 30 Tagen.
+- **Mein Konto** im Schülerbereich: eigenes Passwort ändern, eigene
+  Engagement-Zahlen sehen, Kopie aller eigenen Daten herunterladen
+  (Art. 15/20 DSGVO).
+- Keine Abwesenheitsgründe, Geschlecht freiwillig („keine Angabe“), Hinweise
+  an allen Freitextfeldern, keine Cookies, keine Analyse- oder Werbedienste,
+  keine externen CDNs (die Supabase-Bibliothek liegt unter
+  [`vendor/supabase-js`](vendor/supabase-js)).
+
+**Aufgaben der Schule (organisatorisch):** Die Schule ist verantwortliche
+Stelle. Sie sollte Konten und Projekt (Supabase, Hosting) selbst führen bzw.
+übernehmen, den Auftragsverarbeitungsvertrag mit Supabase abschließen, die
+Verarbeitung ins Verzeichnis der Verarbeitungstätigkeiten aufnehmen, die
+Notwendigkeit einer Datenschutz-Folgenabschätzung prüfen, die Teams-Nutzung
+freigeben und die Datenschutzhinweise ausfüllen. Für den Dienstplan sollte
+ein eigenes Supabase-Projekt genutzt werden (derzeit teilt er sich das
+Projekt mit einer anderen Anwendung).
+
+**Einrichtung/Umstellung der Datenbank:** Für eine neue Installation die
+Migrationen in [`supabase/migrations`](supabase/migrations) der Reihe nach im
+SQL-Editor ausführen. Beim Umstieg von der früheren Version: zuerst
+`20261009_ssd_secure_access.sql` (ergänzt nur Funktionen), dann die neue
+App-Version veröffentlichen, danach `20261009_ssd_secure_access_cutover.sql`
+(übernimmt die alten Passwort-Hashes, entfernt sie aus dem Datenbestand und
+sperrt den direkten Tabellenzugriff).
 
 **Teams-Benachrichtigungen:** Die Workflow-Adresse liegt nur verschlüsselt im
 Supabase Vault und ist über die API nicht erreichbar; Versandfunktion und
-interne Tabellen liegen im nicht veröffentlichten Schema `ssd_private`. Weil
-der Datenbestand aber mit dem öffentlichen Schlüssel beschreibbar ist, könnte
-eine technisch versierte Person mit Kenntnis des Schlüssels eigene Texte in
-den Postausgang schreiben, die dann im Kanal erscheinen. Das ist begrenzt:
-höchstens 12 Nachrichten pro Stunde, Links werden entfernt, alles wird als
-reiner Text ohne Formatierung angezeigt, und der Button-Link stammt aus dem
-Vault, nicht aus dem Datenbestand. Bei Missbrauch den Vault-Eintrag
+interne Tabellen liegen im nicht veröffentlichten Schema `ssd_private`. In
+den Postausgang schreiben können nur angemeldete Personen (über ihre
+Änderungen); zusätzlich gilt: höchstens 12 Nachrichten pro Stunde, Links
+werden entfernt, alles erscheint als reiner Text, und der Button-Link stammt
+aus dem Vault, nicht aus dem Datenbestand. Bei Missbrauch den Vault-Eintrag
 `ssd_teams_webhook_url` löschen oder den Workflow in Teams ausschalten.
 
 **Datenbank wach halten:** Supabase pausiert Projekte im kostenlosen Tarif
 nach etwa einer Woche ohne Zugriff. Der GitHub-Workflow
 [`.github/workflows/supabase-keepalive.yml`](.github/workflows/supabase-keepalive.yml)
-schickt deshalb alle drei Tage eine Mini-Leseabfrage (manuell auslösbar unter
-*Actions*). Ist das Projekt doch einmal pausiert, lässt es sich im
+ruft deshalb alle drei Tage die Funktion `ssd_ping` auf, die keine Daten
+liefert (manuell auslösbar unter *Actions*). Ist das Projekt doch einmal pausiert, lässt es sich im
 Supabase-Dashboard über „Restore project“ wieder aktivieren.
 
 ## Erweiterbarkeit

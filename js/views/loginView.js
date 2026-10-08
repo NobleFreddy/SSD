@@ -6,8 +6,10 @@
  * für Schüler:innen und Azubis an (sofern in den Einstellungen erlaubt):
  * Ist ein Schulcode festgelegt, wird er abgefragt und das Konto mit dem
  * richtigen Code sofort freigeschaltet (und angemeldet). Ohne Schulcode
- * werden neue Konten inaktiv angelegt und müssen von einem Administrator
- * freigeschaltet werden, bevor eine Anmeldung möglich ist.
+ * werden neue Konten inaktiv angelegt und müssen freigeschaltet werden.
+ *
+ * Vor der Anmeldung kennt die App nur öffentliche Angaben (Schulname,
+ * Registrierung) — Benutzername, Passwort und Schulcode prüft der Server.
  */
 window.SSD = window.SSD || {};
 SSD.Views = SSD.Views || {};
@@ -23,13 +25,23 @@ SSD.Views.Login = (function () {
     return U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label' }, [labelText]), inputEl]);
   }
 
+  /** Links unter der Karte: Datenschutzhinweise und (falls hinterlegt) Impressum der Schule. */
+  function buildLegalLinks() {
+    const info = SSD.Store.getPublicInfo();
+    const privacyLink = U.el('a', { href: '#/datenschutz' }, ['Datenschutz']);
+    const links = [privacyLink];
+    const imprint = String((info.privacy && info.privacy.imprintUrl) || '').trim();
+    if (/^https:\/\//i.test(imprint)) links.push(U.el('a', { href: imprint, target: '_blank', rel: 'noopener' }, ['Impressum']));
+    return U.el('p', { class: 'auth-footer-note legal-links' }, links.flatMap((a, i) => (i ? [' · ', a] : [a])));
+  }
+
   function render(container) {
-    const state = SSD.Store.getState();
+    const info = SSD.Store.getPublicInfo();
     const screen = U.el('div', { class: 'centered-screen' });
     const card = U.el('div', { class: 'card auth-card animate-pop-in' });
 
     card.appendChild(U.el('div', { class: 'auth-card__logo' }, [U.el('img', { src: 'assets/logo.png', alt: 'Vereinslogo' })]));
-    const titleEl = U.el('h1', {}, [state.school?.name || 'Schulsanitätsdienst']);
+    const titleEl = U.el('h1', {}, [info.schoolName || 'Schulsanitätsdienst']);
     const subtitleEl = U.el('p', { class: 'auth-card__subtitle' }, ['Dienstplan-Verwaltung — bitte melden Sie sich an.']);
     card.appendChild(titleEl);
     card.appendChild(subtitleEl);
@@ -63,11 +75,15 @@ SSD.Views.Login = (function () {
       formHost.appendChild(mode === 'register' ? buildRegisterForm() : buildLoginForm());
     }
 
-    function buildLoginForm() {
-      const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' }, [
+    function errorBoxEl() {
+      return U.el('div', { class: 'auth-error', style: 'display:none;' }, [
         U.el('span', { html: SSD.Icons.svg('warning', { size: 16 }) }),
         U.el('span', {}, ['']),
       ]);
+    }
+
+    function buildLoginForm() {
+      const errorBox = errorBoxEl();
       const usernameInput = U.el('input', { class: 'input', autocomplete: 'username', placeholder: 'Benutzername' });
       const passwordInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: 'Passwort' });
       const submitBtn = U.el('button', { class: 'btn btn--primary btn--block btn--lg', type: 'submit' }, ['Anmelden']);
@@ -93,13 +109,10 @@ SSD.Views.Login = (function () {
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Wird geprüft …';
-        const result = role === 'admin'
-          ? await SSD.Auth.loginAdmin(username, password)
-          : await SSD.Auth.loginStudent(username, password);
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Anmelden';
-
+        const result = await SSD.Auth.login(role === 'admin' ? 'admin' : 'student', username, password);
         if (!result.ok) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Anmelden';
           showError(result.error);
           passwordInput.value = '';
           passwordInput.focus();
@@ -108,7 +121,7 @@ SSD.Views.Login = (function () {
         SSD.Toast.success('Willkommen!', role === 'admin' ? 'Als Administrator angemeldet.' : 'Erfolgreich angemeldet.');
       });
 
-      if (role !== 'admin' && SSD.SettingsService.get().allowSelfRegistration) {
+      if (role !== 'admin' && info.selfRegistration) {
         const switchLink = U.el('button', { type: 'button', class: 'btn btn--ghost btn--block btn--sm', style: 'margin-top:10px;' }, ['Noch kein Konto? Jetzt registrieren']);
         switchLink.addEventListener('click', () => { mode = 'register'; renderForm(); });
         form.appendChild(switchLink);
@@ -119,30 +132,34 @@ SSD.Views.Login = (function () {
     }
 
     function buildRegisterForm() {
-      const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' }, [
-        U.el('span', { html: SSD.Icons.svg('warning', { size: 16 }) }),
-        U.el('span', {}, ['']),
-      ]);
+      const errorBox = errorBoxEl();
+      const minLength = SSD.Auth.PASSWORD_MIN_LENGTH;
       const firstNameInput = U.el('input', { class: 'input', placeholder: 'Vorname' });
       const lastNameInput = U.el('input', { class: 'input', placeholder: 'Nachname' });
       const usernameInput = U.el('input', { class: 'input', autocomplete: 'username', placeholder: 'Benutzername wählen' });
-      const passwordInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'Passwort (mind. 6 Zeichen)' });
+      const passwordInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: `Passwort (mind. ${minLength} Zeichen)` });
       const passwordConfirmInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'Passwort bestätigen' });
-      const genderSelect = U.el('select', { class: 'select' }, SSD.Models.GENDERS.map((g) => U.el('option', { value: g.key, selected: g.key === 'd' }, [g.label])));
+      const genderSelect = U.el('select', { class: 'select' }, SSD.Models.GENDERS.map((g) => U.el('option', { value: g.key, selected: g.key === 'n' }, [g.label])));
       const classInput = U.el('input', { class: 'input', placeholder: 'z. B. 10a' });
       const firstAbi = U.schoolYearEnd();
       const yearInput = U.el('input', { class: 'input', type: 'number', min: String(firstAbi), max: String(firstAbi + 9), placeholder: `z. B. ${firstAbi + 2}` });
       const hasCode = SSD.Auth.hasRegistrationCode();
       const codeInput = U.el('input', { class: 'input', placeholder: 'z. B. SANI-7K3Q-P9XM', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false' });
       const submitBtn = U.el('button', { class: 'btn btn--primary btn--block btn--lg', type: 'submit' }, ['Konto erstellen']);
+      const privacyNote = U.el('p', { class: 'field__hint', style: 'margin:0 0 12px;' }, [
+        'Mit dem Konto speichert der Schulsanitätsdienst Ihren Namen, Ihre Klasse, Ihre Verfügbarkeiten und Ihre Dienste, um den Dienstplan zu organisieren. Das Geschlecht ist freiwillig und wird nur genutzt, um auf Wunsch gemischte Teams zu bilden. Details stehen in den ',
+        U.el('a', { href: '#/datenschutz' }, ['Datenschutzhinweisen']),
+        '.',
+      ]);
 
       const form = U.el('form', {}, [
         errorBox,
         U.el('div', { class: 'grid grid-cols-2' }, [field('Vorname', firstNameInput), field('Nachname', lastNameInput)]),
         field('Benutzername', usernameInput),
         U.el('div', { class: 'grid grid-cols-2' }, [field('Passwort', passwordInput), field('Passwort bestätigen', passwordConfirmInput)]),
-        U.el('div', { class: 'grid grid-cols-3' }, [field('Geschlecht', genderSelect), field('Klasse', classInput), field(role === 'azubi' ? 'Abijahrgang (optional)' : 'Abijahrgang', yearInput)]),
+        U.el('div', { class: 'grid grid-cols-3' }, [field('Geschlecht (freiwillig)', genderSelect), field('Klasse', classInput), field(role === 'azubi' ? 'Abijahrgang (optional)' : 'Abijahrgang', yearInput)]),
         hasCode ? field('Schulcode', codeInput) : null,
+        privacyNote,
         submitBtn,
       ]);
 
@@ -170,8 +187,7 @@ SSD.Views.Login = (function () {
         if (!U.Validate.required(data.firstName)) problems.push('Bitte einen Vornamen eingeben.');
         if (!U.Validate.required(data.lastName)) problems.push('Bitte einen Nachnamen eingeben.');
         if (!U.Validate.usernameFormat(data.username)) problems.push('Benutzername: 3–32 Zeichen, nur Buchstaben/Zahlen/._-');
-        else if (SSD.Auth.isUsernameTaken(data.username)) problems.push('Dieser Benutzername ist bereits vergeben.');
-        if (!U.Validate.minLength(passwordInput.value, 6)) problems.push('Das Passwort muss mindestens 6 Zeichen lang sein.');
+        if (!U.Validate.minLength(passwordInput.value, minLength)) problems.push(`Das Passwort muss mindestens ${minLength} Zeichen lang sein.`);
         else if (passwordInput.value !== passwordConfirmInput.value) problems.push('Die Passwörter stimmen nicht überein.');
         if (yearInput.value && (!Number.isInteger(yearValue) || yearValue < firstAbi || yearValue > firstAbi + 9)) problems.push(`Bitte einen Abijahrgang zwischen ${firstAbi} und ${firstAbi + 9} angeben.`);
         else if (role !== 'azubi' && !yearInput.value) problems.push(`Bitte Ihren Abijahrgang angeben (Jahr des Abiturs, z. B. ${firstAbi + 2}).`);
@@ -181,24 +197,18 @@ SSD.Views.Login = (function () {
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Wird erstellt …';
-        if (hasCode && !(await SSD.Auth.verifyRegistrationCode(codeInput.value))) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Konto erstellen';
-          showError('Der Schulcode ist nicht korrekt. Bitte prüfen Sie die Eingabe.');
-          return;
-        }
-        const student = await SSD.StudentService.registerSelf({ ...data, password: passwordInput.value, autoApprove: hasCode });
+        const result = await SSD.StudentService.registerSelf({ ...data, password: passwordInput.value, code: codeInput.value });
         submitBtn.disabled = false;
         submitBtn.textContent = 'Konto erstellen';
 
-        if (hasCode) {
-          SSD.Auth.setSession({ role: student.role || 'student', studentId: student.id });
+        if (!result.ok) { showError(result.error); return; }
+        if (!result.pending) {
           SSD.Toast.success('Willkommen!', 'Ihr Konto ist freigeschaltet — Sie sind jetzt angemeldet.');
           return;
         }
         mode = 'login';
         renderForm();
-        SSD.Toast.success('Konto erstellt!', 'Ein Administrator muss Ihr Konto noch freischalten, bevor Sie sich anmelden können.');
+        SSD.Toast.success('Konto erstellt!', 'Ein Administrator oder die Sanisprecher:innen müssen Ihr Konto noch freischalten, bevor Sie sich anmelden können.');
       });
 
       const switchLink = U.el('button', { type: 'button', class: 'btn btn--ghost btn--block btn--sm', style: 'margin-top:10px;' }, ['Bereits ein Konto? Zur Anmeldung']);
@@ -211,8 +221,9 @@ SSD.Views.Login = (function () {
 
     setRole('student');
     screen.appendChild(card);
+    card.appendChild(buildLegalLinks());
     container.appendChild(screen);
   }
 
-  return { render };
+  return { render, buildLegalLinks };
 })();

@@ -35,7 +35,8 @@
   </noscript>
 
   <!-- Gemeinsame Cloud-Datenbank (Supabase) -- muss vor js/core/storage.js geladen sein -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+  <!-- supabase-js 2.117.3 wird mit der App ausgeliefert (kein externer CDN-Abruf, siehe vendor/supabase-js) -->
+  <script src="vendor/supabase-js/supabase.js" defer></script>
   <script src="js/core/supabaseConfig.js" defer></script>
 
   <!-- Kernmodule (keine Abhängigkeiten untereinander außer in dieser Reihenfolge) -->
@@ -75,6 +76,7 @@
   <script src="js/modules/announcementsService.js" defer></script>
   <script src="js/modules/meetingsService.js" defer></script>
   <script src="js/modules/engagementService.js" defer></script>
+  <script src="js/modules/retentionService.js" defer></script>
   <script src="js/modules/importExport.js" defer></script>
   <script src="js/ui/scheduleTable.js" defer></script>
   <script src="js/ui/substitutionFlow.js" defer></script>
@@ -86,11 +88,13 @@
   <script src="js/ui/meetingsPanel.js" defer></script>
   <script src="js/ui/teamMembersPanel.js" defer></script>
   <script src="js/ui/engagementPanel.js" defer></script>
+  <script src="js/ui/accountDialog.js" defer></script>
 
   <!-- Ansichten -->
   <script src="js/views/adminLayout.js" defer></script>
   <script src="js/views/setupView.js" defer></script>
   <script src="js/views/loginView.js" defer></script>
+  <script src="js/views/privacyView.js" defer></script>
   <script src="js/views/studentDashboardView.js" defer></script>
   <script src="js/views/adminDashboardView.js" defer></script>
   <script src="js/views/adminStudentsView.js" defer></script>

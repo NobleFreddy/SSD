@@ -99,7 +99,7 @@ SSD.StatisticsService = (function () {
       .sort((a, b) => b.count - a.count)
       .slice(0, 8);
 
-    const genderRoster = { w: 0, m: 0, d: 0 };
+    const genderRoster = { w: 0, m: 0, d: 0, n: 0 };
     students.forEach((s) => { genderRoster[s.gender] = (genderRoster[s.gender] || 0) + 1; });
 
     const azubiStats = computeAzubiOverview(entries);

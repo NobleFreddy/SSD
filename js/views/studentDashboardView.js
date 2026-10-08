@@ -47,11 +47,15 @@ SSD.Views.StudentDashboard = (function () {
       if (ok) SSD.Auth.logout();
     });
 
+    const accountBtn = U.el('button', { class: 'btn btn--icon btn--ghost', 'data-tooltip': 'Mein Konto: Passwort, meine Daten, mein Engagement', 'aria-label': 'Mein Konto', html: SSD.Icons.svg('user') });
+    accountBtn.addEventListener('click', () => SSD.AccountDialog.open());
+
     const saveIndicatorHandle = SSD.Views.AdminLayout.buildSaveIndicator();
     const topbar = U.el('header', { class: 'topbar' }, [
       U.el('div', { class: 'sidebar__brand-icon topbar__brand-icon' }, [U.el('img', { src: 'assets/logo.png', alt: 'Vereinslogo' })]),
       U.el('div', { class: 'topbar__title' }, [`Hallo, ${student.firstName}!`]),
       saveIndicatorHandle.el,
+      accountBtn,
       themeToggle,
       logoutBtn,
     ]);
@@ -880,7 +884,7 @@ SSD.Views.StudentDashboard = (function () {
     const isEdit = !!existing;
     const nameInput = U.el('input', { class: 'input', value: existing?.name || '', placeholder: 'z. B. Einmalhandschuhe Größe M' });
     const quantityInput = U.el('input', { class: 'input', value: existing?.quantity || '', placeholder: 'z. B. 2 Packungen' });
-    const noteInput = U.el('textarea', { class: 'input', rows: '2' }, [existing?.note || '']);
+    const noteInput = U.el('textarea', { class: 'input', rows: '2', placeholder: U.FREE_TEXT_HINT }, [existing?.note || '']);
     const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
 
     const body = U.el('div', { class: 'stack gap-4' }, [
@@ -1065,11 +1069,13 @@ SSD.Views.StudentDashboard = (function () {
   function buildTeamLeadTab(student) {
     const pendingRequests = SSD.SelfServiceService.getOpenSeats().filter((s) => s.reason === 'requested').length;
     const pendingRegistrations = SSD.StudentService.getPendingApprovalCount();
+    const showEngagement = SSD.SettingsService.get().leadsSeeEngagement !== false;
     const sections = [
       { key: 'overview', label: 'Überblick & Vertretungen', badge: pendingRequests },
       { key: 'members', label: 'Mitglieder', badge: pendingRegistrations },
-      { key: 'engagement', label: 'Engagement' },
-    ];
+      showEngagement ? { key: 'engagement', label: 'Engagement' } : null,
+    ].filter(Boolean);
+    if (!sections.some((section) => section.key === teamLeadSection)) teamLeadSection = 'overview';
     const nav = U.el('div', { class: 'tabs tabs--sub', role: 'tablist', 'aria-label': 'Team-Verwaltung' }, sections.map((section) => {
       const btn = U.el('button', { class: `tab${teamLeadSection === section.key ? ' is-active' : ''}`, role: 'tab', 'aria-selected': teamLeadSection === section.key ? 'true' : 'false' }, [
         section.label,

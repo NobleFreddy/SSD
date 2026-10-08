@@ -58,7 +58,7 @@ SSD.MeetingsPanel = (function () {
         field('Ende (optional)', endInput),
       ]),
       field('Ort (optional)', locationInput),
-      field('Tagesordnung (optional)', agendaInput),
+      field('Tagesordnung (optional)', agendaInput, U.FREE_TEXT_HINT),
       U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, [
         'Eingeladen sind alle aktiven Sanis und Azubis. Sie sehen das Treffen im Reiter „Teamtreffen“ und sagen dort zu oder ab.',
         teamsActive ? (isEdit

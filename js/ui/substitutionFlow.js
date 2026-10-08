@@ -238,7 +238,7 @@ SSD.SubstitutionFlow = (function () {
                 replacementStudentId: SSD.SubstitutionService.effectiveChoiceId(p),
                 reasonText: p.overridden ? 'Manuell ausgewählt' : (p.chosen ? p.chosen.reasons.join(', ') : 'Kein geeigneter Ersatz gefunden'),
               }));
-              const count = SSD.SubstitutionService.applySubstitutions(choices, data.reasonLabel);
+              const count = SSD.SubstitutionService.applySubstitutions(choices);
               SSD.Toast.success('Vertretung eingetragen', `${count} Dienst(e) aktualisiert.`);
               SSD.Dialog.close();
               if (typeof opts.onApplied === 'function') opts.onApplied();
@@ -250,14 +250,18 @@ SSD.SubstitutionFlow = (function () {
     render();
   }
 
-  /** @param {string[]} absentStudentIds @param {string} startIso @param {string} endIso @param {string} reasonLabel @param {{onApplied?:Function, onRegenerateWeek?:Function}} [options] */
-  function launchSubstitutionFlow(absentStudentIds, startIso, endIso, reasonLabel, options) {
+  /**
+   * @param {string[]} absentStudentIds @param {string} startIso @param {string} endIso
+   * @param {?string} _unusedReason - früher der Abwesenheitsgrund; wird nicht mehr erfasst
+   * @param {{onApplied?:Function, onRegenerateWeek?:Function}} [options]
+   */
+  function launchSubstitutionFlow(absentStudentIds, startIso, endIso, _unusedReason, options) {
     const result = SSD.SubstitutionService.proposeSubstitutions(absentStudentIds, startIso, endIso);
     if (result.noAffectedEntries) {
       SSD.Toast.info('Keine betroffenen Dienste', 'Im gewählten Zeitraum sind die ausgewählte(n) Person(en) in keinem Dienst eingeteilt.');
       return;
     }
-    openSubstitutionReview({ proposals: result.proposals, fairnessBefore: result.fairnessBefore, reasonLabel }, options);
+    openSubstitutionReview({ proposals: result.proposals, fairnessBefore: result.fairnessBefore }, options);
   }
 
   /**
@@ -269,15 +273,13 @@ SSD.SubstitutionFlow = (function () {
     const picker = buildStudentMultiSelect(cfg.prefillIds || []);
     const startInput = U.el('input', { class: 'input', type: 'date', value: cfg.prefillDateIso || U.toIsoDate(U.today()) });
     const endInput = U.el('input', { class: 'input', type: 'date', value: cfg.prefillDateIso || U.toIsoDate(U.today()) });
-    const reasonSelect = U.el('select', { class: 'select' }, SSD.SubstitutionService.ABSENCE_REASONS.map((r) => U.el('option', { value: r.key }, [r.label])));
     const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
 
     const body = U.el('div', { class: 'stack gap-4' }, [
       errorBox,
       field('Abwesende Schüler:innen', picker.el),
       U.el('div', { class: 'grid grid-cols-2' }, [field('Von', startInput), field('Bis', endInput)]),
-      field('Grund', reasonSelect),
-      U.el('p', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, ['Es werden ausschließlich bereits eingeteilte Dienste dieser Person(en) im gewählten Zeitraum angepasst — der übrige Dienstplan bleibt unverändert.']),
+      U.el('p', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, ['Es werden ausschließlich bereits eingeteilte Dienste dieser Person(en) im gewählten Zeitraum angepasst — der übrige Dienstplan bleibt unverändert. Einen Grund für die Abwesenheit fragt die App bewusst nicht ab.']),
     ]);
 
     SSD.Dialog.open({
@@ -293,8 +295,7 @@ SSD.SubstitutionFlow = (function () {
             // Ohne Startdatum würden auch alle vergangenen Dienste "vertreten".
             if (!startInput.value || !endInput.value) { errorBox.textContent = 'Bitte einen Zeitraum (von/bis) angeben.'; errorBox.style.display = 'flex'; return; }
             if (endInput.value < startInput.value) { errorBox.textContent = 'Das Enddatum darf nicht vor dem Startdatum liegen.'; errorBox.style.display = 'flex'; return; }
-            const reasonLabel = SSD.SubstitutionService.ABSENCE_REASONS.find((r) => r.key === reasonSelect.value)?.label;
-            launchSubstitutionFlow(ids, startInput.value, endInput.value, reasonLabel, cfg.options);
+            launchSubstitutionFlow(ids, startInput.value, endInput.value, null, cfg.options);
           },
         },
       ],

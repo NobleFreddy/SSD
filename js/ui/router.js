@@ -66,7 +66,8 @@ SSD.Router = (function () {
     // Veraltete Sitzung verwerfen: vor/nach einer (Neu-)Einrichtung gibt es niemanden,
     // der angemeldet sein könnte, und eine unbekannte Rolle passt auf keine Seite.
     // Sonst leiten "Login → Setup" bzw. "geschützte Seite → Startseite" endlos im Kreis.
-    if (session && (!SSD.Store.isSetupComplete() || !KNOWN_ROLES.includes(session.role))) {
+    // Ohne geladene Daten gibt es keine nutzbare Sitzung (z. B. abgelaufen und verworfen).
+    if (session && (!SSD.Store.isLoaded() || !SSD.Store.isSetupComplete() || !KNOWN_ROLES.includes(session.role))) {
       SSD.Auth.clearSession();
       session = null;
     }
@@ -80,12 +81,14 @@ SSD.Router = (function () {
     const { route, params } = matched;
     const setupComplete = SSD.Store.isSetupComplete();
 
-    // 1. Die Ersteinrichtung muss immer zuerst abgeschlossen werden.
-    if (!setupComplete && path !== '/setup') { navigate('/setup'); return; }
+    // 1. Die Ersteinrichtung muss immer zuerst abgeschlossen werden (die Datenschutzhinweise sind immer erreichbar).
+    if (!setupComplete && path !== '/setup' && route.roles !== 'public') { navigate('/setup'); return; }
     if (setupComplete && path === '/setup') { navigate(resolveRedirectForRole(session)); return; }
 
     // 2. Öffentliche Seiten (Login) ergeben nur ohne aktive Sitzung Sinn.
-    if (route.roles === 'public-only') {
+    if (route.roles === 'public') {
+      // für alle erreichbar
+    } else if (route.roles === 'public-only') {
       if (session) { navigate(resolveRedirectForRole(session)); return; }
     } else if (route.roles) {
       // 3. Geschützte Seiten erfordern eine passende Rolle.

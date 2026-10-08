@@ -122,10 +122,11 @@ SSD.Views.AdminStatistics = (function () {
     const genderRosterCard = U.el('div', { class: 'card' }, [
       U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Team-Zusammensetzung'])]),
       U.el('div', { class: 'card__body' }, [
-        U.el('div', { class: 'grid grid-cols-3' }, [
+        U.el('div', { class: 'grid grid-cols-4' }, [
           statTile('female', overview.genderRoster.w || 0, 'Mädchen'),
           statTile('male', overview.genderRoster.m || 0, 'Jungen'),
           statTile('user', overview.genderRoster.d || 0, 'Divers'),
+          statTile('user', overview.genderRoster.n || 0, 'Keine Angabe'),
         ]),
       ]),
     ]);

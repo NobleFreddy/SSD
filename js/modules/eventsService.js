@@ -142,7 +142,7 @@ SSD.EventsService = (function () {
       toAdd.forEach((p) => {
         if (!target.participantIds.includes(p.id)) target.participantIds.push(p.id);
       });
-      SSD.NotificationService.add(draft, 'event', `${target.title}: ${toAdd.length === 1 ? '1 Person' : `${toAdd.length} Personen`} automatisch eingeteilt (${toAdd.map((p) => SSD.StudentService.fullName(p)).join(', ')}).`);
+      SSD.NotificationService.add(draft, 'event', `${target.title}: ${toAdd.length === 1 ? '1 Person' : `${toAdd.length} Personen`} automatisch eingeteilt (${toAdd.map((p) => SSD.NotificationService.personName(p.id)).join(', ')}).`);
     });
     return toAdd;
   }

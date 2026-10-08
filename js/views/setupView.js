@@ -37,7 +37,7 @@ SSD.Views.Setup = (function () {
     const passwordField = U.el('div', { class: 'field' }, [
       U.el('label', { class: 'field__label' }, ['Passwort']),
       U.el('input', { class: 'input', id: 'setup-password', type: 'password', autocomplete: 'new-password' }),
-      U.el('div', { class: 'field__hint' }, ['Mindestens 6 Zeichen.']),
+      U.el('div', { class: 'field__hint' }, [`Mindestens ${SSD.Auth.PASSWORD_MIN_LENGTH} Zeichen.`]),
     ]);
 
     const passwordConfirmField = U.el('div', { class: 'field' }, [
@@ -76,7 +76,7 @@ SSD.Views.Setup = (function () {
       const problems = [];
       if (!U.Validate.required(schoolName)) problems.push('Bitte geben Sie den Namen Ihrer Schule ein.');
       if (!U.Validate.usernameFormat(username)) problems.push('Der Benutzername ist ungültig (3–32 Zeichen, Buchstaben/Zahlen/._-).');
-      if (!U.Validate.minLength(password, 6)) problems.push('Das Passwort muss mindestens 6 Zeichen lang sein.');
+      if (!U.Validate.minLength(password, SSD.Auth.PASSWORD_MIN_LENGTH)) problems.push(`Das Passwort muss mindestens ${SSD.Auth.PASSWORD_MIN_LENGTH} Zeichen lang sein.`);
       if (password !== passwordConfirm) problems.push('Die Passwörter stimmen nicht überein.');
       if (registrationCode && !SSD.Auth.isValidRegistrationCode(registrationCode)) problems.push(`Der Schulcode muss mindestens ${SSD.Auth.REGISTRATION_CODE_MIN_LENGTH} Zeichen haben (Leerzeichen/Bindestriche zählen nicht).`);
 
@@ -88,18 +88,27 @@ SSD.Views.Setup = (function () {
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Wird eingerichtet …';
-      await SSD.Auth.completeSetup({ schoolName, adminUsername: username, adminPassword: password, registrationCode });
+      try {
+        await SSD.Auth.completeSetup({ schoolName, adminUsername: username, adminPassword: password, registrationCode });
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Einrichtung abschließen';
+        errorBox.textContent = String(err.message || err);
+        errorBox.style.display = 'flex';
+        return;
+      }
       const codeNote = registrationCode ? ` Schulcode für die Registrierung: ${registrationCode} — bitte notieren.` : '';
       let message = `Willkommen, ${username}!${codeNote}`;
       if (demoCheckbox.checked) {
         await SSD.DemoData.seed();
-        message = `Willkommen, ${username}! Beispieldaten wurden geladen (Schüler-Startpasswort: "willkommen").${codeNote}`;
+        message = `Willkommen, ${username}! Beispieldaten wurden geladen (Startpasswort der Beispielkonten: "${SSD.DemoData.PASSWORD}").${codeNote}`;
       }
       SSD.Toast.show({ type: 'success', title: 'Einrichtung abgeschlossen', message, duration: registrationCode ? 15000 : undefined });
     });
 
     card.appendChild(form);
-    card.appendChild(U.el('p', { class: 'auth-footer-note' }, ['Alle Daten werden zentral gespeichert und sind für alle Geräte sofort sichtbar.']));
+    card.appendChild(U.el('p', { class: 'auth-footer-note' }, ['Alle Daten werden zentral gespeichert. Passwörter prüft nur der Server; angemeldete Personen sehen nur, was sie für ihre Rolle brauchen.']));
+    card.appendChild(SSD.Views.Login.buildLegalLinks());
 
     screen.appendChild(card);
     container.appendChild(screen);

@@ -33,7 +33,7 @@ SSD.TaskEditor = (function () {
     const body = U.el('div', { class: 'stack gap-4' }, [
       errorBox,
       field('Titel', titleInput),
-      field('Beschreibung (optional)', descInput),
+      field('Beschreibung (optional)', descInput, U.FREE_TEXT_HINT),
       field('Fällig bis (optional)', dueInput),
     ]);
 

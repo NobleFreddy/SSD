@@ -2,91 +2,117 @@
  * ============================================================================
  * SSD.Storage — Persistenzschicht (Supabase-Cloud-Datenbank + JSON-Dateien)
  * ============================================================================
- * Kapselt sämtlichen Zugriff auf die gemeinsame Datenablage. Die gesamte
- * Anwendung arbeitet weiterhin mit einem einzigen JSON-Objekt (siehe
- * `js/core/models.js`), das jetzt aber nicht mehr im `localStorage` eines
- * einzelnen Browsers liegt, sondern in genau einer Zeile einer Supabase-
- * Tabelle (`ssd_dienstplan_state`) — dadurch sehen alle Geräte/Browser
- * denselben, live aktuellen Datenstand.
+ * Kapselt sämtlichen Zugriff auf die gemeinsame Datenablage. Die Anwendung
+ * arbeitet weiterhin mit einem einzigen JSON-Objekt (siehe
+ * `js/core/models.js`), das in genau einer Zeile der Supabase-Tabelle
+ * `ssd_dienstplan_state` liegt — alle Geräte sehen denselben Stand.
  *
- * Nebenläufigkeit: Da mehrere Personen gleichzeitig speichern können, nutzt
- * `save()` eine optimistische Versionsprüfung (Spalte `version`): Ein
- * Speichervorgang schlägt fehl, wenn zwischenzeitlich jemand anderes bereits
- * gespeichert hat, statt dessen Änderungen stillschweigend zu überschreiben.
- * Der Aufrufer (`SSD.Store`) zeigt in diesem Fall einen Hinweis und lädt die
- * aktuellen Daten neu.
+ * Zugriffsschutz: Die Tabelle selbst ist für den öffentlichen Schlüssel
+ * gesperrt. Gelesen und geschrieben wird ausschließlich über Datenbank-
+ * funktionen (`ssd_load`, `ssd_save` …, siehe supabase/migrations), die eine
+ * gültige Sitzung verlangen. Die Sitzung entsteht beim Login auf dem Server
+ * (`ssd_login`, Passwortprüfung mit bcrypt); der Browser kennt nur ein
+ * zufälliges Token. Jede Rolle bekommt nur, was sie braucht, und darf nur
+ * speichern, was sie ändern darf — das prüft der Server, nicht der Browser.
  *
- * Sicherheit: Der Zeilenzugriff ist per Row-Level-Security auf Lesen/
- * Aktualisieren beschränkt (keine INSERT-/DELETE-Rechte für den Client) — die
- * einzige Zeile wird einmalig per Datenbank-Migration angelegt. Der
- * inhaltliche Zugriffsschutz erfolgt weiterhin über den Login-Bildschirm der
- * Anwendung (gehashte Passwörter), siehe README-Hinweis zum Sicherheitsmodell.
+ * Nebenläufigkeit: `save()` nutzt eine optimistische Versionsprüfung. Hat
+ * zwischenzeitlich jemand anderes gespeichert, liefert der Server den
+ * aktuellen Stand zurück, statt fremde Änderungen zu überschreiben.
+ *
+ * Live-Aktualisierung: Nach jeder Änderung schickt die Datenbank nur die neue
+ * Versionsnummer (Realtime-Broadcast, keine Daten); die App lädt dann über
+ * `ssd_load` nach. Zusätzlich fragt sie jede Minute die Version ab, falls die
+ * Live-Verbindung ausfällt.
  */
 window.SSD = window.SSD || {};
 
 SSD.Storage = (function () {
   'use strict';
 
-  const BACKUP_KEY = 'ssd_schulsanitaetsdienst_dienstplan_v1__localbackup';
-  const { URL: SUPABASE_URL, ANON_KEY, TABLE, ROW_ID } = SSD.SupabaseConfig;
+  const { URL: SUPABASE_URL, ANON_KEY } = SSD.SupabaseConfig;
+  const POLL_INTERVAL_MS = 60000;
 
-  const client = window.supabase.createClient(SUPABASE_URL, ANON_KEY);
+  // Kein Supabase-Auth: Die Bibliothek soll nichts im Browser speichern.
+  const client = window.supabase.createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  // Frühere Versionen legten eine Vollkopie aller Daten im Browser ab — einmalig entfernen.
+  try { localStorage.removeItem('ssd_schulsanitaetsdienst_dienstplan_v1__localbackup'); } catch (err) { /* ignore */ }
 
   let cachedData = null;
   let lastKnownVersion = null;
 
-  /** Bestbemühter lokaler Zwischenspeicher — reines Sicherheitsnetz, niemals die primäre Quelle. */
-  function writeLocalBackup(data) {
-    try { localStorage.setItem(BACKUP_KEY, JSON.stringify(data)); } catch (err) { /* Speicher evtl. voll — Best-Effort */ }
+  /** Fehler, wenn die Sitzung abgelaufen oder ungültig ist (z. B. Konto deaktiviert). */
+  class SessionError extends Error {
+    constructor() {
+      super('Die Sitzung ist abgelaufen. Bitte erneut anmelden.');
+      this.sessionExpired = true;
+    }
+  }
+
+  function token() {
+    const session = SSD.Auth.getSession();
+    return session ? session.token || null : null;
+  }
+
+  /** Ruft eine Datenbankfunktion auf. Netzwerk- und Serverfehler werden als Error geworfen. */
+  async function call(name, params) {
+    const { data, error } = await client.rpc(name, params || {});
+    if (error) throw new Error(error.message || 'Unbekannter Datenbankfehler');
+    return data;
+  }
+
+  /** Öffentliche Angaben für Anmeldeseite und Datenschutzhinweise — ohne personenbezogene Daten. */
+  async function fetchPublicInfo() {
+    return call('ssd_public_info');
+  }
+
+  async function fetchState() {
+    const res = await call('ssd_load', { p_token: token() });
+    if (!res || !res.ok) throw new SessionError();
+    return { data: migrateIfNeeded(res.data), version: res.version };
   }
 
   /**
-   * Lädt den aktuellen Anwendungszustand aus Supabase. Wirft bei Netzwerk-/
-   * Datenbankfehlern bewusst einen Fehler (statt still mit leeren Daten
-   * weiterzumachen), damit `SSD.Store.init()` eine klare Fehlermeldung statt
-   * eines verwirrenden "alles ist leer" anzeigen kann.
+   * Lädt den Stand, den die angemeldete Person sehen darf. Wirft bei
+   * Netzwerkfehlern einen Error und bei ungültiger Sitzung einen SessionError.
    */
   async function load() {
-    const { data: row, error } = await client.from(TABLE).select('data, version').eq('id', ROW_ID).maybeSingle();
-    if (error) throw new Error(error.message || 'Unbekannter Datenbankfehler');
-    if (!row) { cachedData = null; lastKnownVersion = null; return null; }
-    cachedData = migrateIfNeeded(row.data);
-    lastKnownVersion = row.version;
-    writeLocalBackup(cachedData);
+    const { data, version } = await fetchState();
+    cachedData = data;
+    lastKnownVersion = version;
     return cachedData;
   }
 
   /**
-   * Speichert einen Zustand zurück nach Supabase.
-   * @returns {Promise<{ok: true} | {ok: false, conflict?: boolean, error?: any}>}
+   * Speichert einen Zustand.
+   * @returns {Promise<{ok: true} | {ok: false, conflict?: boolean, remote?: {data, version}, session?: boolean, error?: any}>}
    */
   async function save(data) {
     data.meta = data.meta || {};
     data.meta.lastModifiedAt = new Date().toISOString();
 
     try {
-      let query = client.from(TABLE).update({
-        data, version: (lastKnownVersion || 0) + 1, updated_at: data.meta.lastModifiedAt,
-      }).eq('id', ROW_ID);
-      if (lastKnownVersion != null) query = query.eq('version', lastKnownVersion);
-
-      const { data: rows, error } = await query.select('version');
-
-      if (error) {
-        SSD.EventBus.emit('storage:error', { error });
-        return { ok: false, error };
+      const res = await call('ssd_save', { p_token: token(), p_data: data, p_expected_version: lastKnownVersion });
+      if (res && res.ok) {
+        lastKnownVersion = res.version;
+        cachedData = data;
+        SSD.EventBus.emit('storage:saved', { at: data.meta.lastModifiedAt });
+        return { ok: true };
       }
-      if (!rows || !rows.length) {
-        // Optimistische Sperre: Zwischen unserem letzten Laden und jetzt hat
-        // jemand anderes bereits gespeichert. Nicht überschreiben.
+      if (res && res.conflict) {
+        // Jemand anderes hat zwischenzeitlich gespeichert — dessen Stand übernimmt der Aufrufer.
         SSD.EventBus.emit('storage:conflict', {});
-        return { ok: false, conflict: true };
+        return { ok: false, conflict: true, remote: { data: migrateIfNeeded(res.data), version: res.version } };
       }
-      lastKnownVersion = rows[0].version;
-      cachedData = data;
-      writeLocalBackup(data);
-      SSD.EventBus.emit('storage:saved', { at: data.meta.lastModifiedAt });
-      return { ok: true };
+      if (res && res.error === 'session') {
+        SSD.EventBus.emit('auth:expired', {});
+        return { ok: false, session: true };
+      }
+      const error = new Error((res && res.error) || 'Speichern fehlgeschlagen');
+      SSD.EventBus.emit('storage:error', { error });
+      return { ok: false, error };
     } catch (err) {
       // z. B. keine Internetverbindung — nie eine unbehandelte Promise-Ablehnung
       // aus dem "fire-and-forget"-Aufruf in SSD.Store werden lassen.
@@ -96,52 +122,64 @@ SSD.Storage = (function () {
   }
 
   /**
-   * Setzt die geteilte Zeile auf den Ausgangszustand zurück ("Alle Daten
-   * zurücksetzen" in den Einstellungen). Betrifft alle Personen, die auf
-   * dieselbe Datenbank zugreifen — nicht nur diesen Browser.
-   */
-  async function clearAll() {
-    const fresh = SSD.Models.createDefaultAppData();
-    await save(fresh);
-    try { localStorage.removeItem(BACKUP_KEY); } catch (err) { /* ignore */ }
-    cachedData = null;
-  }
-
-  /** Stellt den zuletzt lokal zwischengespeicherten Stand wieder her (Notfall, z. B. bei Verbindungsproblemen). */
-  function restoreBackup() {
-    const backup = localStorage.getItem(BACKUP_KEY);
-    if (!backup) return null;
-    try {
-      return JSON.parse(backup);
-    } catch (err) {
-      return null;
-    }
-  }
-
-  /**
-   * Live-Abonnement auf Änderungen anderer Personen (Supabase Realtime).
-   * Ruft `onRemoteChange(newData, newVersion)` bei jeder fremden Änderung auf.
-   * Wichtig: übernimmt `newVersion` NICHT automatisch in `lastKnownVersion` —
-   * das entscheidet bewusst der Aufrufer (`SSD.Store.setKnownVersion`), damit
-   * eine Änderung, die lokal (noch) nicht übernommen wurde (z. B. weil gerade
-   * ungespeicherte eigene Bearbeitungen bestehen), beim nächsten eigenen
-   * Speichern zuverlässig als Konflikt erkannt wird, statt sie stillschweigend
-   * zu überschreiben.
+   * Live-Abonnement auf Änderungen anderer Personen. Ruft
+   * `onRemoteChange(newData, newVersion)` auf, sobald eine neuere Version
+   * vorliegt. Übernimmt die Version bewusst NICHT selbst in
+   * `lastKnownVersion` — das entscheidet der Aufrufer (`SSD.Store`), damit
+   * eine noch nicht übernommene Änderung beim nächsten eigenen Speichern
+   * zuverlässig als Konflikt erkannt wird.
+   * @returns {Function} beendet das Abonnement
    */
   function subscribeToRemoteChanges(onRemoteChange) {
+    let fetching = false;
+    let stopped = false;
+
+    async function refreshIfNewer(version) {
+      if (stopped || fetching) return;
+      if (version != null && version <= (lastKnownVersion || 0)) return;
+      fetching = true;
+      try {
+        const remote = await fetchState();
+        if (!stopped && remote.version > (lastKnownVersion || 0)) onRemoteChange(remote.data, remote.version);
+      } catch (err) {
+        if (err.sessionExpired) SSD.EventBus.emit('auth:expired', {});
+      } finally {
+        fetching = false;
+      }
+    }
+
     const channel = client
-      .channel('ssd_dienstplan_state_changes')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: TABLE, filter: `id=eq.${ROW_ID}` }, (payload) => {
-        const row = payload.new;
-        if (!row || row.version === lastKnownVersion) return; // eigene soeben gespeicherte Änderung
-        onRemoteChange(migrateIfNeeded(row.data), row.version);
+      .channel('ssd_state')
+      .on('broadcast', { event: 'state_changed' }, (message) => {
+        const version = message && message.payload ? Number(message.payload.version) : null;
+        refreshIfNewer(Number.isFinite(version) ? version : null);
       })
       .subscribe();
-    return () => client.removeChannel(channel);
+
+    const poll = setInterval(async () => {
+      if (stopped || document.hidden) return;
+      try {
+        const res = await call('ssd_version', { p_token: token() });
+        if (res && res.ok) refreshIfNewer(res.version);
+        else if (res && res.error === 'session') SSD.EventBus.emit('auth:expired', {});
+      } catch (err) { /* offline — nächster Versuch beim nächsten Intervall */ }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      stopped = true;
+      clearInterval(poll);
+      client.removeChannel(channel);
+    };
   }
 
   function setKnownVersion(version) { lastKnownVersion = version; }
   function getKnownVersion() { return lastKnownVersion || 0; }
+
+  /** Vergisst den geladenen Stand (Abmelden). */
+  function forget() {
+    cachedData = null;
+    lastKnownVersion = null;
+  }
 
   /**
    * Status des serverseitigen Teams-Versands (Tabelle `ssd_teams_status`,
@@ -201,20 +239,38 @@ SSD.Storage = (function () {
     // Früherer Schalter "Gemischte Paare bevorzugen" lebt jetzt als Gewichtungsstufe weiter.
     if (!storedSettings.weights && storedSettings.preferMixedGender === false) data.settings.weights.genderMix = 0;
     delete data.settings.preferMixedGender;
+    // Zugangsgeheimnisse gehören nie in den Datenbestand (liegen serverseitig).
+    delete data.settings.registrationCodeHash;
+    delete data.settings.registrationCodeSalt;
     if (!Array.isArray(data.settings.yearGroupRules)) data.settings.yearGroupRules = [];
     if (!Array.isArray(data.settings.pairRules)) data.settings.pairRules = [];
     const storedTeams = storedSettings.teams || {};
     data.settings.teams = Object.assign({}, defaults.settings.teams, storedTeams, {
       categories: Object.assign({}, defaults.settings.teams.categories, storedTeams.categories || {}),
     });
+    data.settings.privacy = Object.assign({}, defaults.settings.privacy, storedSettings.privacy || {});
+    data.settings.retention = Object.assign({}, defaults.settings.retention, storedSettings.retention || {});
     if (!Array.isArray(data.teamsOutbox)) data.teamsOutbox = [];
+    if (data.admin && typeof data.admin === 'object') {
+      delete data.admin.passwordHash;
+      delete data.admin.salt;
+    }
 
     data.students = Array.isArray(data.students) ? data.students : [];
     data.students.forEach((s) => {
+      delete s.passwordHash;
+      delete s.salt;
       if (!Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = [];
       if (s.availabilityReminderAt === undefined) s.availabilityReminderAt = null;
+      if (!s.gender) s.gender = 'n';
     });
     data.schedule = data.schedule || defaults.schedule;
+    // Frühere Versionen konnten "Krankheit" als Abwesenheitsgrund speichern (Gesundheitsangabe).
+    (data.schedule.entries || []).forEach((entry) => {
+      (entry.substitutionLog || []).forEach((log) => {
+        if (/krank/i.test(log.reason || '')) log.reason = 'Abwesenheit';
+      });
+    });
     data.specialDays = data.specialDays || [];
     data.events = data.events || [];
     data.tasks = data.tasks || [];
@@ -243,8 +299,9 @@ SSD.Storage = (function () {
   }
 
   return {
-    load, save, clearAll, restoreBackup, subscribeToRemoteChanges, setKnownVersion, getKnownVersion, fetchTeamsStatus,
-    exportJsonFile, importJsonFile,
+    call, fetchPublicInfo,
+    load, save, forget, subscribeToRemoteChanges, setKnownVersion, getKnownVersion, fetchTeamsStatus,
+    exportJsonFile, importJsonFile, migrateIfNeeded,
     getStorageUsageInfo,
   };
 })();

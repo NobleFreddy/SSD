@@ -31,36 +31,61 @@ SSD.StudentService = (function () {
     return getActive().filter((s) => (s.role || 'student') === role);
   }
 
-  async function create({ firstName, lastName, username, password, role, gender, schoolClass, yearGroup, maxDutiesPerWeek, notes, adminMessage, active, pendingApproval }) {
-    const salt = SSD.Auth.generateSalt();
-    const passwordHash = await SSD.Auth.hashPassword(password, salt);
-    const student = SSD.Models.createStudent({
-      firstName, lastName, username, gender, schoolClass, yearGroup,
+  function buildStudent({ firstName, lastName, username, role, gender, schoolClass, yearGroup, maxDutiesPerWeek, notes, adminMessage, active, pendingApproval }) {
+    return SSD.Models.createStudent({
+      firstName, lastName, username, gender: gender || 'n', schoolClass, yearGroup,
       role: role || 'student',
       maxDutiesPerWeek: maxDutiesPerWeek || null,
       notes: notes || '', adminMessage: adminMessage || '',
-      passwordHash, salt,
       active: active !== false,
       pendingApproval: !!pendingApproval,
     });
-    SSD.Store.commit(`Schüler "${firstName} ${lastName}" angelegt`, (draft) => {
-      draft.students.push(student);
+  }
+
+  /**
+   * Legt Personen an (Administrator) und setzt danach ihre Startpasswörter
+   * serverseitig. Der Server nimmt Passwörter nur für gespeicherte Personen
+   * an, daher wird zuerst gespeichert. Vom Administrator vergebene Passwörter
+   * müssen bei der ersten Anmeldung geändert werden.
+   * @param {Array<object>} entries — Personendaten inkl. `password`
+   * @returns {Promise<{students: object[], failed: Array<{student: object, error: string}>}>}
+   */
+  async function createMany(entries) {
+    const students = entries.map(buildStudent);
+    if (!students.length) return { students, failed: [] };
+    SSD.Store.commit(students.length === 1 ? `Schüler "${students[0].firstName} ${students[0].lastName}" angelegt` : `${students.length} Personen angelegt`, (draft) => {
+      draft.students.push(...students);
     });
-    return student;
+    const failed = [];
+    if (!(await SSD.Store.flush())) {
+      students.forEach((student) => failed.push({ student, error: 'Speichern fehlgeschlagen' }));
+      return { students, failed };
+    }
+    for (let i = 0; i < students.length; i++) {
+      try {
+        await SSD.Auth.setPassword(students[i].id, entries[i].password);
+      } catch (err) {
+        failed.push({ student: students[i], error: String(err.message || err) });
+      }
+    }
+    return { students, failed };
+  }
+
+  async function create(data) {
+    const { students, failed } = await createMany([data]);
+    if (failed.length) throw new Error(`Die Person wurde angelegt, das Passwort aber nicht gesetzt: ${failed[0].error}`);
+    return students[0];
   }
 
   /**
    * Selbstregistrierung durch Schüler:innen/Azubis über den Login-Bildschirm.
-   * Ohne Schulcode ist das neue Konto bewusst inaktiv, bis ein Administrator
-   * es freischaltet. Mit gültigem Schulcode (`autoApprove`, vorher per
-   * `SSD.Auth.verifyRegistrationCode` geprüft) ist es sofort aktiv.
+   * Der Server legt das Konto an: ohne Schulcode inaktiv, bis es freigeschaltet
+   * wird, mit gültigem Schulcode sofort aktiv (und angemeldet).
+   * @returns {Promise<{ok: boolean, pending?: boolean, error?: string}>}
    */
-  async function registerSelf({ firstName, lastName, username, password, role, gender, schoolClass, yearGroup, autoApprove }) {
-    const student = await create({
-      firstName, lastName, username, password, role, gender, schoolClass, yearGroup,
-      active: !!autoApprove, pendingApproval: !autoApprove,
-    });
-    return student;
+  async function registerSelf({ firstName, lastName, username, password, role, gender, schoolClass, yearGroup, code }) {
+    const student = buildStudent({ firstName, lastName, username, role, gender, schoolClass, yearGroup, active: false, pendingApproval: true });
+    return SSD.Auth.register(student, password, code);
   }
 
   /** Anzahl der Selbstregistrierungen, die noch auf eine Entscheidung des Administrators warten. */
@@ -77,16 +102,9 @@ SSD.StudentService = (function () {
     });
   }
 
+  /** Neues Passwort durch den Administrator — die Person muss es bei der nächsten Anmeldung ändern. */
   async function resetPassword(id, newPassword) {
-    const state = SSD.Store.getState();
-    const student = state.students.find((s) => s.id === id);
-    if (!student) return;
-    await SSD.Auth.setStudentPassword(student, newPassword);
-    SSD.Store.commit('Passwort zurückgesetzt', (draft) => {
-      const target = draft.students.find((s) => s.id === id);
-      target.salt = student.salt;
-      target.passwordHash = student.passwordHash;
-    });
+    await SSD.Auth.setPassword(id, newPassword);
   }
 
   function removeFromDraft(draft, id) {
@@ -388,7 +406,7 @@ SSD.StudentService = (function () {
   }
 
   return {
-    getAll, getById, getActive, getActiveByRole, create, registerSelf, update, remove, setActive,
+    getAll, getById, getActive, getActiveByRole, create, createMany, registerSelf, update, remove, removeFromDraft, setActive,
     MAX_PREFERRED_PARTNERS, getPreferredPartners, setPreferredPartners,
     getLeadershipHolder, isTeamLead, setLeadershipRole, clearLeadershipRole,
     setAvailabilityCell, resetPassword, getAvailabilityWindow, getPendingApprovalCount,

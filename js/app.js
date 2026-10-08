@@ -6,11 +6,10 @@
  * registriert alle Routen. Wird als letztes Skript geladen, nachdem alle
  * anderen SSD.*-Module definiert wurden.
  *
- * Der anfängliche Zustand kommt jetzt über das Netzwerk aus Supabase (siehe
- * `js/core/storage.js`), daher zeigt der Bootstrap-Vorgang kurz einen
- * Ladebildschirm und im Fehlerfall (z. B. keine Internetverbindung) einen
- * Hinweis mit Wiederholen-Möglichkeit, statt die Anwendung mit leeren Daten
- * zu starten.
+ * Vor der Anmeldung lädt die App nur öffentliche Angaben (Schulname,
+ * Registrierung, Datenschutzhinweise). Die eigentlichen Daten kommen erst mit
+ * einer gültigen Sitzung (siehe `js/core/storage.js`). Im Fehlerfall (z. B.
+ * keine Internetverbindung) erscheint ein Hinweis mit Wiederholen-Möglichkeit.
  */
 (function () {
   'use strict';
@@ -18,6 +17,7 @@
   function registerRoutes() {
     SSD.Router.register('/setup', SSD.Views.Setup, 'public-only');
     SSD.Router.register('/login', SSD.Views.Login, 'public-only');
+    SSD.Router.register('/datenschutz', SSD.Views.Privacy, 'public');
     SSD.Router.register('/student', SSD.Views.StudentDashboard, ['student', 'azubi']);
     SSD.Router.register('/admin/dashboard', SSD.Views.AdminDashboard, ['admin']);
     SSD.Router.register('/admin/students', SSD.Views.AdminStudents, ['admin']);
@@ -61,6 +61,19 @@
     SSD.EventBus.on('store:remote-update-deferred', () => {
       SSD.Toast.info('Neue Daten verfügbar', 'Es gibt Änderungen von einem anderen Gerät. Bitte zuerst speichern, dann die Seite neu laden.');
     });
+    let expiredShown = false;
+    SSD.EventBus.on('auth:expired', () => {
+      if (expiredShown || !SSD.Auth.getSession()) return;
+      expiredShown = true;
+      SSD.Toast.warning('Bitte neu anmelden', 'Die Sitzung ist abgelaufen oder das Konto wurde geändert. Nicht gespeicherte Änderungen gingen dabei verloren.');
+      SSD.Auth.logout();
+      setTimeout(() => { expiredShown = false; }, 3000);
+    });
+    // Nach der Anmeldung: vom Administrator vergebenes Startpasswort ändern bzw. zu kurzes Passwort ersetzen.
+    SSD.EventBus.on('router:navigated', () => {
+      const session = SSD.Auth.getSession();
+      if (session && (session.mustChangePassword || session.weakPassword)) SSD.PasswordDialog.promptIfNeeded();
+    });
   }
 
   function renderLoadingScreen(root) {
@@ -91,7 +104,18 @@
     renderLoadingScreen(root);
 
     try {
-      await SSD.Store.init();
+      SSD.Store.setPublicInfo(await SSD.Storage.fetchPublicInfo());
+      if (SSD.Auth.getSession()) {
+        // Noch angemeldet (z. B. Seite neu geladen): Daten mit der bestehenden Sitzung laden.
+        try {
+          await SSD.Store.load();
+        } catch (err) {
+          if (!err.sessionExpired) throw err;
+          SSD.Auth.clearSession();
+        }
+      } else {
+        SSD.Auth.clearSession(); // Sitzung aus einer früheren Version (ohne Token)
+      }
     } catch (err) {
       console.error('[App] Initialisierung fehlgeschlagen:', err);
       renderErrorScreen(root, `Die Daten konnten nicht geladen werden (${err.message || err}). Bitte Internetverbindung prüfen.`);

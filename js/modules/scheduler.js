@@ -419,7 +419,8 @@ SSD.Scheduler = (function () {
     }
     if (ids.length === 2) {
       const [a, b] = ids.map((id) => context.studentsById.get(id));
-      if (a && b && w.genderMix && a.gender === b.gender) cost += w.genderMix;
+      // Ohne Angabe ('n') zählt eine Person weder als gleich noch als verschieden.
+      if (a && b && w.genderMix && a.gender === b.gender && a.gender !== 'n') cost += w.genderMix;
 
       // Partnerwechsel gilt nicht für ausdrücklich gewünschte Paare (sonst
       // würde die quadratische Wiederholungsstrafe jeden Wunsch nach ein,
@@ -1113,7 +1114,7 @@ SSD.Scheduler = (function () {
     const state = SSD.Store.getState();
     const genders = studentIds.map((id) => {
       const s = state.students.find((st) => st.id === id);
-      return s ? s.gender : 'd';
+      return s ? s.gender : 'n';
     });
     if (requiredCount === 2) {
       const [a, b] = genders;

@@ -283,6 +283,9 @@ SSD.Utils = (function () {
    * Validierung
    * ------------------------------------------------------------------- */
 
+  /** Hinweis an Freitextfeldern (Bemerkungen, Pinnwand, Tagesordnung …) — Datensparsamkeit. */
+  const FREE_TEXT_HINT = 'Bitte keine Gesundheitsangaben, Noten oder privaten Details eintragen.';
+
   const Validate = {
     required(value) {
       return value !== null && value !== undefined && String(value).trim() !== '';
@@ -374,6 +377,7 @@ SSD.Utils = (function () {
   function qsa(selector, root) { return Array.from((root || document).querySelectorAll(selector)); }
 
   return {
+    FREE_TEXT_HINT,
     WEEKDAY_KEYS, WEEKDAY_LABELS, WEEKDAY_LABELS_SHORT,
     DUTY_BLOCKS, DUTY_BLOCK_KEYS, blockLabel,
     toIsoDate, parseIsoDate, today, addDays, schoolYearEnd, getMondayOfWeek, getIsoWeekNumber,

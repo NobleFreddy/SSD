@@ -46,13 +46,6 @@ SSD.SubstitutionService = (function () {
     HEADROOM: 15,
   };
 
-  const ABSENCE_REASONS = [
-    { key: 'krankheit', label: 'Krankheit' },
-    { key: 'klassenfahrt', label: 'Klassenfahrt / Ausflug' },
-    { key: 'kurzfristig', label: 'Kurzfristige Abwesenheit' },
-    { key: 'sonstiges', label: 'Sonstiges' },
-  ];
-
   function studentName(id) {
     const s = SSD.StudentService.getById(id);
     return s ? SSD.StudentService.fullName(s) : 'Unbekannt';
@@ -136,10 +129,13 @@ SSD.SubstitutionService = (function () {
     let genderPts = SCORE_WEIGHTS.GENDER;
     if (context.w.genderMix > 0 && currentPartnerIds.length === 1) {
       const partner = context.studentsById.get(currentPartnerIds[0]);
-      if (partner && candidate.gender !== partner.gender) {
-        reasons.push('Ergibt ein gemischtes Team (Mädchen + Junge)');
-      } else if (partner) {
+      const known = (g) => g && g !== 'n';
+      if (partner && known(candidate.gender) && known(partner.gender) && candidate.gender !== partner.gender) {
+        reasons.push('Ergibt ein gemischtes Team');
+      } else if (partner && known(candidate.gender) && candidate.gender === partner.gender) {
         genderPts = 0;
+      } else if (partner) {
+        genderPts = SCORE_WEIGHTS.GENDER / 2; // ohne Angabe: neutral
       }
     }
 
@@ -403,13 +399,17 @@ SSD.SubstitutionService = (function () {
    * ausschließlich die betroffenen Dienste, alles andere bleibt unberührt.
    * ------------------------------------------------------------------- */
 
-  /** @param {Array<{entryId:string, absentStudentId:string, replacementStudentId:?string, isAzubiSeat?:boolean, skip?:boolean, reasonText?:string}>} finalChoices */
-  function applySubstitutions(finalChoices, reasonLabel) {
+  /**
+   * Gründe für eine Abwesenheit werden bewusst nicht erfasst (z. B. wäre "Krankheit"
+   * eine Gesundheitsangabe) — für die Planung genügt, dass jemand verhindert ist.
+   * @param {Array<{entryId:string, absentStudentId:string, replacementStudentId:?string, isAzubiSeat?:boolean, skip?:boolean, reasonText?:string}>} finalChoices
+   */
+  function applySubstitutions(finalChoices) {
     const appliedAt = new Date().toISOString();
     const applied = finalChoices.filter((c) => !c.skip);
     if (!applied.length) return 0;
 
-    SSD.Store.commit(`Vertretung eingetragen (${reasonLabel || 'Abwesenheit'})`, (draft) => {
+    SSD.Store.commit('Vertretung eingetragen', (draft) => {
       const N = SSD.NotificationService;
       const lines = [];
       applied.forEach((choice) => {
@@ -431,7 +431,7 @@ SSD.SubstitutionService = (function () {
         entry.substitutionLog.push({
           originalStudentId: choice.absentStudentId,
           replacementStudentId: choice.replacementStudentId || null,
-          reason: choice.reasonText || reasonLabel || '',
+          reason: choice.reasonText || 'Abwesenheit',
           appliedAt,
         });
         const seat = choice.isAzubiSeat ? ' (Azubi-Platz)' : '';
@@ -439,13 +439,12 @@ SSD.SubstitutionService = (function () {
           ? `${N.dutyLabel(entry)}: ${N.personName(choice.replacementStudentId)} vertritt ${N.personName(choice.absentStudentId)}${seat}`
           : `${N.dutyLabel(entry)}: ${N.personName(choice.absentStudentId)} fällt aus — Platz bleibt offen${seat}`);
       });
-      if (lines.length) N.add(draft, 'substitution', N.withDetails(`Vertretung eingetragen${reasonLabel ? ` (${reasonLabel})` : ''}:`, lines));
+      if (lines.length) N.add(draft, 'substitution', N.withDetails('Vertretung eingetragen:', lines));
     });
     return applied.length;
   }
 
   return {
-    ABSENCE_REASONS,
     getAffectedEntries,
     proposeSubstitutions,
     proposeAutoReplacements,

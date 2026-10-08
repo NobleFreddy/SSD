@@ -1,15 +1,17 @@
 /**
  * ============================================================================
- * SSD.Auth — Benutzerverwaltung, Login & Sitzungen
+ * SSD.Auth — Anmeldung, Sitzungen & Berechtigungen
  * ============================================================================
  * Es gibt zwei Rollen: "admin" (genau ein Konto, im Setup-Assistenten
- * angelegt) und "student" (beliebig viele, vom Administrator angelegte
- * Konten). Passwörter werden nicht im Klartext gespeichert, sondern als
- * SHA-256-Hash mit individuellem Salt (Web-Crypto-API, ohne externe
- * Bibliothek). Die Prüfung selbst läuft im Browser-JavaScript der Anwendung,
- * nicht auf einem eigenen Server — der Hash verhindert lediglich das
- * versehentliche Klartext-Mitlesen von Passwörtern (z. B. in exportierten
- * JSON-Dateien oder direkt in der Datenbank), siehe README-Sicherheitshinweis.
+ * angelegt) und "student"/"azubi" (beliebig viele Konten).
+ *
+ * Passwörter prüft ausschließlich der Server (Datenbankfunktion `ssd_login`,
+ * bcrypt). Sie verlassen die Datenbank nie und stehen auch nicht im
+ * Datenbestand. Der Browser erhält nach erfolgreicher Anmeldung nur ein
+ * zufälliges Sitzungs-Token (sessionStorage — endet mit dem Schließen des
+ * Tabs, serverseitig spätestens nach 12 Stunden). Rechte wie
+ * `canCoordinate()` steuern hier nur die Oberfläche; was jemand tatsächlich
+ * lesen und speichern darf, entscheidet der Server anhand des Tokens.
  */
 window.SSD = window.SSD || {};
 
@@ -17,76 +19,82 @@ SSD.Auth = (function () {
   'use strict';
 
   const SESSION_KEY = 'ssd_session_v1';
-
-  /* ---------------------------------------------------------------------
-   * Hashing
-   * ------------------------------------------------------------------- */
-
-  function bufferToHex(buffer) {
-    return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  function generateSalt() {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return bufferToHex(bytes.buffer);
-  }
-
-  async function hashPassword(password, salt) {
-    if (window.crypto && crypto.subtle && crypto.subtle.digest) {
-      const data = new TextEncoder().encode(`${salt}::${password}`);
-      const digest = await crypto.subtle.digest('SHA-256', data);
-      return bufferToHex(digest);
-    }
-    // Fallback ohne Web-Crypto (z. B. sehr alte Umgebungen): einfacher,
-    // nicht kryptografisch starker Hash — besser als Klartext, aber nur
-    // ein Sicherheitsnetz für den unwahrscheinlichen Fall fehlender SubtleCrypto-Unterstützung.
-    let hash = 0;
-    const str = `${salt}::${password}`;
-    for (let i = 0; i < str.length; i++) {
-      hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
-    }
-    return `fallback_${hash}`;
-  }
-
-  async function verifyPassword(password, salt, expectedHash) {
-    const hash = await hashPassword(password, salt);
-    return hash === expectedHash;
-  }
+  const PASSWORD_MIN_LENGTH = 10;
 
   /* ---------------------------------------------------------------------
    * Sitzung (sessionStorage — endet, wenn der Browser-Tab geschlossen wird)
    * ------------------------------------------------------------------- */
 
+  /** { role, studentId, token, mustChangePassword?, weakPassword? } — Sitzungen ohne Token stammen aus alten Versionen und gelten nicht. */
   function getSession() {
     try {
       const raw = sessionStorage.getItem(SESSION_KEY);
-      return raw ? JSON.parse(raw) : null;
+      const session = raw ? JSON.parse(raw) : null;
+      return session && session.token ? session : null;
     } catch (err) {
       return null;
     }
   }
 
-  function setSession(session) {
+  function storeSession(session) {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    SSD.EventBus.emit('auth:changed', session);
   }
 
-  function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
-    SSD.EventBus.emit('auth:changed', null);
+  function getToken() {
+    const session = getSession();
+    return session ? session.token : null;
   }
 
-  /** Verwirft eine veraltete Sitzung still (ohne 'auth:changed') — für den Router während des Seitenwechsels. */
+  /** Verwirft die Sitzung still (ohne 'auth:changed') — für den Router und den App-Start. */
   function clearSession() {
     try { sessionStorage.removeItem(SESSION_KEY); } catch (err) { /* ignore */ }
+  }
+
+  /** Abmelden: Sitzung beim Server beenden und alle Daten aus diesem Tab entfernen. */
+  function logout() {
+    const token = getToken();
+    if (token) SSD.Storage.call('ssd_logout', { p_token: token }).catch(() => { /* offline — läuft serverseitig ohnehin ab */ });
+    clearSession();
+    SSD.Store.clear();
+    SSD.EventBus.emit('auth:changed', null);
+    refreshPublicInfo(); // z. B. geänderter Schulname oder Datenschutzangaben für die Anmeldeseite
   }
 
   function getCurrentStudent() {
     const session = getSession();
     if (!session || (session.role !== 'student' && session.role !== 'azubi')) return null;
     const state = SSD.Store.getState();
+    if (!state) return null;
     return state.students.find((s) => s.id === session.studentId) || null;
+  }
+
+  /**
+   * Speichert die vom Server erhaltene Sitzung, lädt die erlaubten Daten und
+   * meldet danach die Anmeldung (Router wechselt die Seite).
+   */
+  async function startSession(res) {
+    storeSession({
+      role: res.role,
+      studentId: res.personId || null,
+      token: res.token,
+      mustChangePassword: !!res.mustChangePassword,
+      weakPassword: !!res.weakPassword,
+    });
+    try {
+      await SSD.Store.load();
+    } catch (err) {
+      clearSession();
+      SSD.Store.clear();
+      throw err;
+    }
+    SSD.EventBus.emit('auth:changed', getSession());
+  }
+
+  /** Markiert die Passwort-Hinweise als erledigt (nach einem erfolgreichen Passwortwechsel). */
+  function clearPasswordFlags() {
+    const session = getSession();
+    if (!session) return;
+    storeSession(Object.assign({}, session, { mustChangePassword: false, weakPassword: false }));
   }
 
   /* ---------------------------------------------------------------------
@@ -94,8 +102,9 @@ SSD.Auth = (function () {
    * ---------------------------------------------------------------------
    * Pinnwand, Teamtreffen, Aufgaben anlegen, Lücken füllen, Registrierungen
    * freigeben und die Engagement-Übersicht stehen dem Administrator und den
-   * Personen mit Zusatzbezeichnung (Sanisprecher:in / Stellv.) offen. Wie alle
-   * Rechte dieser App wird das im Browser geprüft (siehe README, Sicherheit).
+   * Personen mit Zusatzbezeichnung (Sanisprecher:in / Stellv.) offen. Der
+   * Server lässt Sanisprecher:innen beim Speichern zusätzlich nur das
+   * Freischalten/Ablehnen von Registrierungen zu (siehe ssd_private.merge_incoming).
    */
 
   function isAdminSession() {
@@ -130,11 +139,7 @@ SSD.Auth = (function () {
    * Schulcode für die Selbstregistrierung
    * ---------------------------------------------------------------------
    * Wer sich mit dem richtigen Code registriert, ist sofort freigeschaltet.
-   * Gespeichert wird nur ein gesalzener Hash — der gesamte Datenstand ist
-   * mit dem öffentlichen Datenbankschlüssel lesbar, ein Klartext-Code wäre
-   * also für jeden in den Entwicklertools sichtbar. Wie die Passwortprüfung
-   * läuft auch diese Prüfung im Browser (Komfort-Hürde, keine harte
-   * Zugangskontrolle — siehe README).
+   * Der Code liegt nur als bcrypt-Hash auf dem Server und wird dort geprüft.
    */
 
   const REGISTRATION_CODE_MIN_LENGTH = 6;
@@ -157,30 +162,35 @@ SSD.Auth = (function () {
     return `SANI-${chars.slice(0, 4)}-${chars.slice(4)}`;
   }
 
-  async function hashRegistrationCode(code) {
-    const salt = generateSalt();
-    return { registrationCodeHash: await hashPassword(normalizeRegistrationCode(code), salt), registrationCodeSalt: salt };
+  /** Zufälliges Startpasswort (12 Zeichen, gut lesbar) für neu angelegte Konten. */
+  function generateInitialPassword() {
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length].toLowerCase()).join('');
+    return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
   }
 
   function hasRegistrationCode() {
-    const settings = SSD.Store.getState().settings;
-    return !!(settings.registrationCodeHash && settings.registrationCodeSalt);
+    return !!SSD.Store.getPublicInfo().hasRegistrationCode;
   }
 
-  async function verifyRegistrationCode(code) {
-    const settings = SSD.Store.getState().settings;
-    if (!hasRegistrationCode()) return false;
-    return verifyPassword(normalizeRegistrationCode(code), settings.registrationCodeSalt, settings.registrationCodeHash);
+  async function refreshPublicInfo() {
+    try {
+      SSD.Store.setPublicInfo(await SSD.Storage.fetchPublicInfo());
+    } catch (err) { /* bleibt beim bisherigen Stand */ }
+    return SSD.Store.getPublicInfo();
   }
 
   /** Setzt einen neuen Schulcode oder entfernt ihn (`code` leer/null). */
   async function setRegistrationCode(code) {
-    const patch = code
-      ? await hashRegistrationCode(code)
-      : { registrationCodeHash: null, registrationCodeSalt: null };
-    SSD.Store.commit(code ? 'Schulcode festgelegt' : 'Schulcode entfernt', (draft) => {
-      Object.assign(draft.settings, patch);
-    }, { trackHistory: false });
+    const res = await SSD.Storage.call('ssd_set_registration_code', { p_token: getToken(), p_code: code || '' });
+    if (!res || !res.ok) throw new Error(errorText(res));
+    await refreshPublicInfo();
+  }
+
+  function errorText(res) {
+    if (res && res.error === 'session') return 'Die Sitzung ist abgelaufen. Bitte neu anmelden.';
+    return (res && res.error) || 'Unbekannter Fehler.';
   }
 
   /* ---------------------------------------------------------------------
@@ -188,69 +198,96 @@ SSD.Auth = (function () {
    * ------------------------------------------------------------------- */
 
   async function completeSetup({ schoolName, adminUsername, adminPassword, registrationCode }) {
-    const salt = generateSalt();
-    const passwordHash = await hashPassword(adminPassword, salt);
-    const codePatch = registrationCode ? await hashRegistrationCode(registrationCode) : null;
-    SSD.Store.commit('Ersteinrichtung abgeschlossen', (draft) => {
-      draft.school.name = schoolName || 'Meine Schule';
-      draft.admin = { username: adminUsername, passwordHash, salt };
-      if (codePatch) Object.assign(draft.settings, codePatch);
-      draft.meta.setupComplete = true;
-    }, { trackHistory: false });
-    setSession({ role: 'admin' });
+    const data = SSD.Models.createDefaultAppData();
+    data.school.name = schoolName || 'Meine Schule';
+    const res = await SSD.Storage.call('ssd_setup', {
+      p_data: data, p_username: adminUsername, p_password: adminPassword, p_code: registrationCode || '',
+    });
+    if (!res || !res.ok) throw new Error(errorText(res));
+    await refreshPublicInfo();
+    await startSession(res);
   }
 
   /* ---------------------------------------------------------------------
-   * Login
+   * Login & Registrierung
    * ------------------------------------------------------------------- */
 
-  async function loginAdmin(username, password) {
-    const state = SSD.Store.getState();
-    const admin = state.admin;
-    if (!admin || admin.username.toLowerCase() !== String(username).trim().toLowerCase()) {
-      return { ok: false, error: 'Benutzername oder Passwort ist falsch.' };
+  /**
+   * @param {'admin'|'student'} kind
+   * @returns {Promise<{ok: boolean, error?: string}>}
+   */
+  async function login(kind, username, password) {
+    let res;
+    try {
+      res = await SSD.Storage.call('ssd_login', { p_role: kind === 'admin' ? 'admin' : 'student', p_username: username, p_password: password });
+    } catch (err) {
+      return { ok: false, error: 'Keine Verbindung zur Datenbank. Bitte Internetverbindung prüfen.' };
     }
-    const valid = await verifyPassword(password, admin.salt, admin.passwordHash);
-    if (!valid) return { ok: false, error: 'Benutzername oder Passwort ist falsch.' };
-    setSession({ role: 'admin' });
+    if (!res || !res.ok) return { ok: false, error: errorText(res) };
+    try {
+      await startSession(res);
+    } catch (err) {
+      return { ok: false, error: 'Die Daten konnten nicht geladen werden. Bitte erneut versuchen.' };
+    }
     return { ok: true };
   }
 
-  async function loginStudent(username, password) {
-    const state = SSD.Store.getState();
-    const uname = String(username).trim().toLowerCase();
-    const student = state.students.find((s) => s.username.toLowerCase() === uname);
-    if (!student) return { ok: false, error: 'Benutzername oder Passwort ist falsch.' };
-    if (!student.active && student.pendingApproval) {
-      return { ok: false, error: 'Ihr Konto wartet noch auf die Freischaltung durch die Administration oder die Sanisprecher:innen.' };
+  /**
+   * Selbstregistrierung über den Login-Bildschirm. Der Server prüft
+   * Benutzername, Passwortlänge und Schulcode und legt das Konto an — mit
+   * gültigem Schulcode sofort freigeschaltet (und angemeldet), sonst wartend.
+   * @returns {Promise<{ok: boolean, pending?: boolean, error?: string}>}
+   */
+  async function register(student, password, code) {
+    let res;
+    try {
+      res = await SSD.Storage.call('ssd_register', { p_student: student, p_password: password, p_code: code || '' });
+    } catch (err) {
+      return { ok: false, error: 'Keine Verbindung zur Datenbank. Bitte Internetverbindung prüfen.' };
     }
-    if (!student.active) return { ok: false, error: 'Dieses Konto ist deaktiviert. Bitte an den Administrator wenden.' };
-    const valid = await verifyPassword(password, student.salt, student.passwordHash);
-    if (!valid) return { ok: false, error: 'Benutzername oder Passwort ist falsch.' };
-    setSession({ role: student.role || 'student', studentId: student.id });
+    if (!res || !res.ok) return { ok: false, error: errorText(res) };
+    if (res.pending) return { ok: true, pending: true };
+    await startSession(res);
     return { ok: true };
   }
 
-  async function setStudentPassword(student, newPassword) {
-    const salt = generateSalt();
-    const passwordHash = await hashPassword(newPassword, salt);
-    student.salt = salt;
-    student.passwordHash = passwordHash;
+  /* ---------------------------------------------------------------------
+   * Passwörter
+   * ------------------------------------------------------------------- */
+
+  /**
+   * Setzt ein Passwort. Eigenes Passwort: aktuelles Passwort erforderlich.
+   * Administrator für andere: ohne aktuelles Passwort — die Person muss es
+   * bei der nächsten Anmeldung ändern.
+   */
+  async function setPassword(personId, newPassword, currentPassword) {
+    const res = await SSD.Storage.call('ssd_set_password', {
+      p_token: getToken(), p_person: personId, p_new_password: newPassword, p_current_password: currentPassword || null,
+    });
+    if (!res || !res.ok) throw new Error(errorText(res));
+    const session = getSession();
+    const ownId = session && (session.role === 'admin' ? 'admin' : session.studentId);
+    if (personId === ownId) clearPasswordFlags();
   }
 
-  async function changeAdminCredentials({ username, newPassword }) {
+  /** Administrator-Zugang: Benutzername im Datenbestand, Passwort serverseitig. */
+  async function changeAdminCredentials({ username, newPassword, currentPassword }) {
     const state = SSD.Store.getState();
-    let passwordHash = state.admin.passwordHash;
-    let salt = state.admin.salt;
-    if (newPassword) {
-      salt = generateSalt();
-      passwordHash = await hashPassword(newPassword, salt);
+    if (newPassword) await setPassword('admin', newPassword, currentPassword);
+    if (username && username !== state.admin.username) {
+      SSD.Store.commit('Admin-Benutzername geändert', (draft) => {
+        draft.admin.username = username;
+      }, { trackHistory: false });
     }
-    SSD.Store.commit('Admin-Zugangsdaten geändert', (draft) => {
-      draft.admin.username = username || draft.admin.username;
-      draft.admin.passwordHash = passwordHash;
-      draft.admin.salt = salt;
-    }, { trackHistory: false });
+  }
+
+  /** Alle Daten zurücksetzen — nur mit dem Administrator-Passwort; der Administrator-Zugang bleibt. */
+  async function resetAllData(adminPassword) {
+    const res = await SSD.Storage.call('ssd_reset_all', {
+      p_token: getToken(), p_password: adminPassword, p_data: SSD.Models.createDefaultAppData(),
+    });
+    if (!res || !res.ok) throw new Error(errorText(res));
+    await SSD.Store.load();
   }
 
   function isUsernameTaken(username, excludeStudentId) {
@@ -261,12 +298,12 @@ SSD.Auth = (function () {
   }
 
   return {
-    generateSalt, hashPassword, verifyPassword,
-    getSession, setSession, logout, clearSession, getCurrentStudent,
+    PASSWORD_MIN_LENGTH,
+    getSession, getToken, clearSession, logout, getCurrentStudent, clearPasswordFlags,
     isAdminSession, canCoordinate, currentPersonId, canManageItem,
-    completeSetup, loginAdmin, loginStudent,
-    setStudentPassword, changeAdminCredentials, isUsernameTaken,
+    completeSetup, login, register,
+    setPassword, changeAdminCredentials, resetAllData, isUsernameTaken,
     REGISTRATION_CODE_MIN_LENGTH, normalizeRegistrationCode, isValidRegistrationCode,
-    generateRegistrationCode, hasRegistrationCode, verifyRegistrationCode, setRegistrationCode,
+    generateRegistrationCode, generateInitialPassword, hasRegistrationCode, setRegistrationCode, refreshPublicInfo,
   };
 })();

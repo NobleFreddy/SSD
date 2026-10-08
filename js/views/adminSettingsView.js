@@ -74,6 +74,13 @@ SSD.Views.AdminSettings = (function () {
           (val) => commit({ autoSubstitution: val }, val ? 'Vertretungen werden ab jetzt automatisch eingeteilt.' : 'Abmeldungen bleiben ab jetzt als „Vertretung gesucht“ offen.')
         ),
         U.el('hr', { class: 'divider' }),
+        switchRow(
+          'Sanisprecher:innen sehen die Engagement-Übersicht',
+          'Zeigt der Team-Leitung die Zahlen aller Personen (Dienste, Einspringen, Teamtreffen …). Jede Person sieht ihre eigenen Zahlen ohnehin unter „Mein Konto“. Ob die Team-Leitung das braucht, entscheidet die Schule.',
+          s.leadsSeeEngagement !== false,
+          (val) => commit({ leadsSeeEngagement: val }, val ? 'Die Team-Leitung sieht die Engagement-Übersicht.' : 'Die Engagement-Übersicht ist jetzt nur für die Administration sichtbar.')
+        ),
+        U.el('hr', { class: 'divider' }),
         U.el('div', { class: 'cluster gap-3', style: 'justify-content:space-between;' }, [
           U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, ['Dienste pro Woche, Teamgröße, Prioritäten, Abijahrgangs- und Paar-Regeln finden Sie unter „Verteilung“.']),
           toDistribution,
@@ -98,8 +105,15 @@ SSD.Views.AdminSettings = (function () {
         return;
       }
       saveBtn.disabled = true;
-      await SSD.Auth.setRegistrationCode(code);
+      try {
+        await SSD.Auth.setRegistrationCode(code);
+      } catch (err) {
+        saveBtn.disabled = false;
+        SSD.Toast.error('Nicht gespeichert', String(err.message || err));
+        return;
+      }
       SSD.Toast.show({ type: 'success', title: 'Schulcode gespeichert', message: `Neuer Code: ${code} — bitte notieren, er wird aus Sicherheitsgründen nicht mehr angezeigt.`, duration: 15000 });
+      renderContent();
     });
 
     const actions = [saveBtn];
@@ -111,8 +125,14 @@ SSD.Views.AdminSettings = (function () {
           message: 'Neue Registrierungen müssen danach wieder von Ihnen in der Schülerverwaltung freigeschaltet werden. Fortfahren?',
         });
         if (!ok) return;
-        await SSD.Auth.setRegistrationCode(null);
+        try {
+          await SSD.Auth.setRegistrationCode(null);
+        } catch (err) {
+          SSD.Toast.error('Nicht entfernt', String(err.message || err));
+          return;
+        }
         SSD.Toast.info('Schulcode entfernt', 'Neue Konten warten jetzt wieder auf Ihre Freischaltung.');
+        renderContent();
       });
       actions.push(removeBtn);
     }
@@ -131,7 +151,7 @@ SSD.Views.AdminSettings = (function () {
         U.el('hr', { class: 'divider' }),
         status,
         field(hasCode ? 'Schulcode ersetzen' : 'Schulcode festlegen', U.el('div', { class: 'cluster gap-2', style: 'flex-wrap:nowrap;' }, [codeInput, generateBtn]),
-          'Groß-/Kleinschreibung, Leerzeichen und Bindestriche spielen bei der Eingabe keine Rolle. Der Code wird verschlüsselt gespeichert und kann danach nicht mehr angezeigt werden — bitte notieren.'),
+          'Groß-/Kleinschreibung, Leerzeichen und Bindestriche spielen bei der Eingabe keine Rolle. Der Code wird nur als Hash auf dem Server gespeichert und kann danach nicht mehr angezeigt werden — bitte notieren.'),
         U.el('div', { class: 'cluster gap-2' }, actions),
       ]),
     ]);
@@ -139,36 +159,71 @@ SSD.Views.AdminSettings = (function () {
 
   function buildAdminCard() {
     const state = SSD.Store.getState();
-    const usernameInput = U.el('input', { class: 'input', value: state.admin.username });
-    const newPasswordInput = U.el('input', { class: 'input', type: 'password', placeholder: 'Unverändert lassen', autocomplete: 'new-password' });
+    const minLength = SSD.Auth.PASSWORD_MIN_LENGTH;
+    const usernameInput = U.el('input', { class: 'input', value: state.admin.username, autocomplete: 'username' });
+    const currentPasswordInput = U.el('input', { class: 'input', type: 'password', placeholder: 'Nur bei Passwortwechsel', autocomplete: 'current-password' });
+    const newPasswordInput = U.el('input', { class: 'input', type: 'password', placeholder: `Unverändert lassen (sonst mind. ${minLength} Zeichen)`, autocomplete: 'new-password' });
     const saveBtn = U.el('button', { class: 'btn btn--primary' }, ['Zugangsdaten speichern']);
     const errorBox = U.el('div', { class: 'auth-error', style: 'display:none;' });
+    const showError = (msg) => { errorBox.textContent = msg; errorBox.style.display = 'flex'; };
 
     saveBtn.addEventListener('click', async () => {
       errorBox.style.display = 'none';
-      if (!U.Validate.usernameFormat(usernameInput.value.trim())) {
-        errorBox.textContent = 'Ungültiger Benutzername.';
-        errorBox.style.display = 'flex';
+      const username = usernameInput.value.trim();
+      if (!U.Validate.usernameFormat(username)) { showError('Ungültiger Benutzername.'); return; }
+      if (username.toLowerCase() !== state.admin.username.toLowerCase() && state.students.some((st) => st.username.toLowerCase() === username.toLowerCase())) {
+        showError('Dieser Benutzername ist bereits an eine Schüler:in vergeben.');
         return;
       }
-      if (newPasswordInput.value && !U.Validate.minLength(newPasswordInput.value, 6)) {
-        errorBox.textContent = 'Das neue Passwort muss mindestens 6 Zeichen haben.';
-        errorBox.style.display = 'flex';
+      if (newPasswordInput.value && !U.Validate.minLength(newPasswordInput.value, minLength)) { showError(`Das neue Passwort muss mindestens ${minLength} Zeichen haben.`); return; }
+      if (newPasswordInput.value && !currentPasswordInput.value) { showError('Bitte zur Bestätigung das aktuelle Passwort eingeben.'); return; }
+      saveBtn.disabled = true;
+      try {
+        await SSD.Auth.changeAdminCredentials({ username, newPassword: newPasswordInput.value, currentPassword: currentPasswordInput.value });
+      } catch (err) {
+        saveBtn.disabled = false;
+        showError(String(err.message || err));
         return;
       }
-      await SSD.Auth.changeAdminCredentials({ username: usernameInput.value.trim(), newPassword: newPasswordInput.value });
+      saveBtn.disabled = false;
       newPasswordInput.value = '';
+      currentPasswordInput.value = '';
       SSD.Toast.success('Gespeichert', 'Administrator-Zugangsdaten aktualisiert.');
     });
 
     return U.el('div', { class: 'card' }, [
-      U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Administrator-Zugang'])]),
+      U.el('div', { class: 'card__header' }, [
+        U.el('div', {}, [
+          U.el('div', { class: 'card__title' }, ['Administrator-Zugang']),
+          U.el('div', { class: 'card__subtitle' }, ['Das Passwort prüft nur der Server; es ist nirgends im Datenbestand gespeichert.']),
+        ]),
+      ]),
       U.el('div', { class: 'card__body stack gap-3' }, [
         errorBox,
-        U.el('div', { class: 'grid grid-cols-2' }, [field('Benutzername', usernameInput), field('Neues Passwort', newPasswordInput)]),
+        field('Benutzername', usernameInput),
+        U.el('div', { class: 'grid grid-cols-2' }, [field('Aktuelles Passwort', currentPasswordInput), field('Neues Passwort', newPasswordInput)]),
         U.el('div', {}, [saveBtn]),
       ]),
     ]);
+  }
+
+  /** Passwortabfrage als Dialog — liefert das eingegebene Passwort oder null. */
+  function promptPassword({ title, message, confirmLabel }) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (value) => { if (!done) { done = true; resolve(value); } };
+      const input = U.el('input', { class: 'input', type: 'password', autocomplete: 'current-password' });
+      const body = U.el('div', { class: 'stack gap-3' }, [U.el('p', { style: 'margin:0;' }, [message]), field('Administrator-Passwort', input)]);
+      const handle = SSD.Dialog.open({
+        title, body, narrow: true, closeOnOverlayClick: false,
+        onClose: () => finish(null),
+        footerButtons: [
+          { label: 'Abbrechen', variant: 'secondary' },
+          { label: confirmLabel, variant: 'danger', closeOnClick: false, onClick: () => { finish(input.value || null); handle.close(); } },
+        ],
+      });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(input.value || null); handle.close(); } });
+    });
   }
 
   function buildDataCard() {
@@ -199,13 +254,22 @@ SSD.Views.AdminSettings = (function () {
     resetBtn.addEventListener('click', async () => {
       const ok = await SSD.Dialog.confirm({
         title: 'Alle Daten löschen', danger: true, confirmLabel: 'Endgültig löschen',
-        message: 'Dies löscht alle Schüler:innen, den Dienstplan, den Kalender und alle Einstellungen unwiderruflich — für alle Personen, die auf diese Datenbank zugreifen, nicht nur für diesen Browser. Erstellen Sie vorher unbedingt ein JSON-Backup. Wirklich fortfahren?',
+        message: 'Dies löscht alle Schüler:innen samt Zugängen, den Dienstplan, den Kalender und alle Einstellungen unwiderruflich — für alle Personen, die auf diese Datenbank zugreifen, nicht nur für diesen Browser. Erstellen Sie vorher bei Bedarf ein JSON-Backup. Wirklich fortfahren?',
       });
-      if (ok) {
-        await SSD.Storage.clearAll();
-        window.location.hash = '#/setup';
-        window.location.reload();
+      if (!ok) return;
+      const password = await promptPassword({
+        title: 'Passwort bestätigen', confirmLabel: 'Alle Daten löschen',
+        message: 'Zur Sicherheit: Bitte das Administrator-Passwort eingeben. Der Administrator-Zugang und der Schulname bleiben erhalten, alle anderen Konten werden gelöscht.',
+      });
+      if (!password) return;
+      try {
+        await SSD.Auth.resetAllData(password);
+      } catch (err) {
+        SSD.Toast.error('Nicht zurückgesetzt', String(err.message || err));
+        return;
       }
+      SSD.Toast.success('Zurückgesetzt', 'Alle Daten wurden gelöscht.');
+      SSD.Router.navigate('/admin/dashboard');
     });
 
     return U.el('div', { class: 'card' }, [
@@ -213,7 +277,11 @@ SSD.Views.AdminSettings = (function () {
         U.el('div', {}, [U.el('div', { class: 'card__title' }, ['Datenverwaltung']), U.el('div', { class: 'card__subtitle' }, [`Aktueller Datenumfang: ${usage.kb} KB`])]),
       ]),
       U.el('div', { class: 'card__body' }, [
-        U.el('p', {}, ['Alle Daten liegen zentral in einer gemeinsamen Datenbank, damit jedes Gerät denselben, aktuellen Dienstplan sieht. Exportieren Sie trotzdem regelmäßig ein JSON-Backup, um bei Bedarf einen früheren Stand wiederherstellen zu können.']),
+        U.el('p', {}, ['Alle Daten liegen zentral in einer gemeinsamen Datenbank (Rechenzentrum Frankfurt), damit jedes Gerät denselben, aktuellen Dienstplan sieht. Ein JSON-Backup hilft, bei Bedarf einen früheren Stand wiederherzustellen.']),
+        U.el('div', { class: 'notice-box notice-box--info', style: 'margin-bottom:12px;' }, [
+          U.el('span', { html: SSD.Icons.svg('shield', { size: 18 }) }),
+          U.el('div', {}, [U.el('p', { style: 'margin:0;' }, ['Exporte (JSON, CSV, Excel) enthalten personenbezogene Daten. Bitte nur auf dienstlichen, geschützten Geräten speichern, nicht weitergeben und löschen, sobald sie nicht mehr gebraucht werden. Passwörter sind darin nicht enthalten.'])]),
+        ]),
         U.el('div', { class: 'cluster gap-2' }, [exportBtn, importBtn, resetBtn]),
       ]),
     ]);
@@ -307,6 +375,15 @@ SSD.Views.AdminSettings = (function () {
     ]);
   }
 
+  function buildNameStyleSelect(teams, saveTeams) {
+    const select = U.el('select', { class: 'select' }, [
+      U.el('option', { value: 'short', selected: teams.nameStyle !== 'full' }, ['Vorname und Initial (z. B. „Lena C.“) — empfohlen']),
+      U.el('option', { value: 'full', selected: teams.nameStyle === 'full' }, ['Vor- und Nachname']),
+    ]);
+    select.addEventListener('change', () => saveTeams({ nameStyle: select.value }));
+    return select;
+  }
+
   function buildTeamsCard() {
     const teams = Object.assign(SSD.Models.createDefaultTeamsSettings(), SSD.SettingsService.get().teams || {});
     function saveTeams(patch) {
@@ -333,6 +410,7 @@ SSD.Views.AdminSettings = (function () {
       U.el('div', { class: 'card__body stack gap-3' }, [
         statusEl,
         switchRow('Benachrichtigungen aktiv', 'Meldungen werden nur gesammelt und gesendet, solange dieser Schalter an ist.', teams.enabled, (val) => saveTeams({ enabled: val })),
+        field('Namen in den Nachrichten', buildNameStyleSelect(teams, saveTeams), 'Datensparsam: Im Kanal genügt meist der Vorname mit Initial. Abwesenheitsgründe werden nie gesendet.'),
         U.el('hr', { class: 'divider' }),
         U.el('div', { class: 'field__label' }, ['Was soll gemeldet werden?']),
         U.el('div', {}, SSD.NotificationService.CATEGORIES.map((c) => switchRow(c.label, c.hint, teams.categories[c.key] !== false,
@@ -347,13 +425,123 @@ SSD.Views.AdminSettings = (function () {
     ]);
   }
 
+  /* ---------------------------------------------------------------------
+   * Datenschutz: Angaben für die Datenschutzhinweise
+   * ------------------------------------------------------------------- */
+
+  function buildPrivacyCard() {
+    const p = Object.assign(SSD.Models.createDefaultPrivacySettings(), SSD.SettingsService.get().privacy || {});
+    const save = (patch) => {
+      SSD.SettingsService.update({ privacy: Object.assign({}, p, patch) });
+      SSD.Toast.success('Gespeichert', 'Datenschutzhinweise aktualisiert.');
+    };
+    const textInput = (key, opts) => {
+      const el = opts && opts.multiline
+        ? U.el('textarea', { class: 'input', rows: '2', placeholder: opts.placeholder || '' }, [p[key] || ''])
+        : U.el('input', { class: 'input', value: p[key] || '', placeholder: (opts && opts.placeholder) || '' });
+      el.addEventListener('change', () => save({ [key]: el.value.trim() }));
+      return el;
+    };
+    const basisSelect = U.el('select', { class: 'select' }, [
+      U.el('option', { value: 'school', selected: p.legalBasis === 'school' }, ['Schulische Aufgabe (Schulgesetz des Landes)']),
+      U.el('option', { value: 'consent', selected: p.legalBasis === 'consent' }, ['Einwilligung (freiwillige Teilnahme)']),
+      U.el('option', { value: 'custom', selected: p.legalBasis === 'custom' }, ['Eigener Text (z. B. KDG bei katholischer Trägerschaft)']),
+    ]);
+    basisSelect.addEventListener('change', () => save({ legalBasis: basisSelect.value }));
+    const missing = ['controller', 'dpo'].filter((k) => !String(p[k] || '').trim());
+
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'card__header' }, [
+        U.el('div', {}, [
+          U.el('div', { class: 'card__title' }, ['Datenschutzhinweise']),
+          U.el('div', { class: 'card__subtitle' }, ['Diese Angaben erscheinen auf der Seite „Datenschutz“, die ohne Anmeldung erreichbar und auf der Anmeldeseite verlinkt ist.']),
+        ]),
+        U.el('a', { class: 'btn btn--secondary btn--sm', href: '#/datenschutz', html: SSD.Icons.svg('shield', { size: 14 }) }, ['Ansehen']),
+      ]),
+      U.el('div', { class: 'card__body stack gap-3' }, [
+        missing.length ? U.el('div', { class: 'notice-box' }, [
+          U.el('span', { html: SSD.Icons.svg('warning', { size: 18 }) }),
+          U.el('div', {}, [U.el('p', { style: 'margin:0;' }, ['Noch unvollständig: Bitte mindestens die verantwortliche Stelle und die/den Datenschutzbeauftragte:n eintragen (Angaben von der Schulleitung).'])]),
+        ]) : null,
+        field('Verantwortliche Stelle', textInput('controller', { multiline: true, placeholder: 'Name und Anschrift der Schule, vertreten durch die Schulleitung' })),
+        U.el('div', { class: 'grid grid-cols-2' }, [
+          field('Ansprechperson', textInput('contact', { placeholder: 'z. B. betreuende Lehrkraft, E-Mail' })),
+          field('Datenschutzbeauftragte:r', textInput('dpo', { placeholder: 'Name und Kontakt' })),
+        ]),
+        field('Zuständige Aufsichtsbehörde', textInput('authority', { placeholder: 'z. B. Landesbeauftragte:r für Datenschutz oder kirchliche Datenschutzaufsicht' })),
+        field('Rechtsgrundlage', basisSelect, 'Welche zutrifft, entscheidet die Schulleitung mit der/dem Datenschutzbeauftragten.'),
+        p.legalBasis === 'custom' ? field('Text zur Rechtsgrundlage', textInput('legalBasisText', { multiline: true })) : null,
+        field('Link zum Impressum der Schule', textInput('imprintUrl', { placeholder: 'https://www.meine-schule.de/impressum' }), 'Optional; erscheint auf der Anmeldeseite.'),
+      ]),
+    ]);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Aufbewahrung: Löschfristen
+   * ------------------------------------------------------------------- */
+
+  function buildRetentionCard() {
+    const R = SSD.RetentionService;
+    const r = R.settings();
+    const graceInput = U.el('input', { class: 'input', type: 'number', min: '0', max: '12', value: String(R.graceMonths()), style: 'max-width:110px;' });
+    graceInput.addEventListener('change', () => {
+      const value = U.clamp(Math.round(Number(graceInput.value) || 0), 0, 12);
+      SSD.SettingsService.update({ retention: Object.assign({}, r, { graceMonths: value }) });
+      SSD.Toast.success('Gespeichert', 'Aufbewahrungsfrist aktualisiert.');
+    });
+    const expired = R.findExpired();
+    const lastDay = U.addDays(R.cutoffDate(), -1);
+    const parts = [
+      [expired.scheduleEntries.length, 'Dienste'], [expired.dutyLogEntries, 'Einträge im Dienstverlauf'], [expired.meetings.length, 'Teamtreffen'],
+      [expired.events.length, 'Veranstaltungen'], [expired.tasks.length, 'erledigte Aufgaben'], [expired.materials.length, 'erledigte Materialanfragen'],
+      [expired.announcements.length, 'Pinnwand-Beiträge'], [expired.pendingRegistrations.length, 'nie freigeschaltete Registrierungen'], [expired.teamsOutbox, 'Teams-Meldungen'],
+    ].filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`);
+    const applyBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('trash', { size: 15 }), disabled: !expired.total }, ['Jetzt löschen']);
+    applyBtn.addEventListener('click', async () => {
+      const ok = await SSD.Dialog.confirm({ title: 'Abgelaufene Daten löschen', danger: true, confirmLabel: 'Löschen', message: `Gelöscht werden: ${parts.join(', ')}. Fortfahren?` });
+      if (!ok) return;
+      const count = R.apply();
+      SSD.Toast.success('Gelöscht', `${count} Einträge gelöscht.`);
+    });
+    const inactive = SSD.StudentService.getAll().filter((st) => !st.active && !st.pendingApproval).length;
+    const toStudents = U.el('button', { class: 'btn btn--ghost btn--sm' }, ['Zur Schülerverwaltung']);
+    toStudents.addEventListener('click', () => SSD.Router.navigate('/admin/students'));
+
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'card__header' }, [
+        U.el('div', {}, [
+          U.el('div', { class: 'card__title' }, ['Aufbewahrung']),
+          U.el('div', { class: 'card__subtitle' }, ['Personenbezogene Daten werden nur so lange gespeichert, wie sie gebraucht werden.']),
+        ]),
+      ]),
+      U.el('div', { class: 'card__body stack gap-3' }, [
+        field('Daten eines Schuljahres löschen … Monate nach Schuljahresende (31.07.)', graceInput,
+          `Betrifft Dienste, Dienstverlauf, Teamtreffen, Veranstaltungen, erledigte Aufgaben und Materialanfragen. Nächste Löschung am ${U.formatDateMedium(R.nextDeletionDate())} — Engagement-Nachweise bitte vorher drucken. Abgelaufene Pinnwand-Beiträge, nie freigeschaltete Registrierungen und Teams-Meldungen werden nach 30 Tagen gelöscht.`),
+        switchRow('Automatisch löschen', 'Beim Öffnen der Administration wird Abgelaufenes ohne Nachfrage gelöscht.', r.auto !== false,
+          (val) => { SSD.SettingsService.update({ retention: Object.assign({}, r, { auto: val }) }); SSD.Toast.success('Gespeichert', 'Einstellung aktualisiert.'); }),
+        U.el('div', { class: 'cluster gap-2', style: 'justify-content:space-between;' }, [
+          U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, [
+            expired.total ? `Derzeit abgelaufen (bis ${U.formatDateMedium(lastDay)}): ${parts.join(', ')}.` : 'Derzeit ist nichts abgelaufen.',
+          ]),
+          applyBtn,
+        ]),
+        inactive ? U.el('div', { class: 'cluster gap-2', style: 'justify-content:space-between;' }, [
+          U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, [`${inactive} deaktivierte Konten — Konten von Personen, die den Sanitätsdienst verlassen haben, bitte löschen.`]),
+          toStudents,
+        ]) : null,
+      ]),
+    ]);
+  }
+
   function renderContent() {
     layoutHandle.contentEl.innerHTML = '';
     layoutHandle.contentEl.appendChild(U.el('div', { class: 'page-header' }, [
-      U.el('div', { class: 'page-header__text' }, [U.el('h1', {}, ['Einstellungen']), U.el('p', {}, ['Schule, Selbstregistrierung, Zugangsdaten und Datenverwaltung.'])]),
+      U.el('div', { class: 'page-header__text' }, [U.el('h1', {}, ['Einstellungen']), U.el('p', {}, ['Schule, Datenschutz, Selbstregistrierung, Zugangsdaten und Datenverwaltung.'])]),
     ]));
     layoutHandle.contentEl.appendChild(buildSchoolCard());
     layoutHandle.contentEl.appendChild(buildGeneralCard());
+    layoutHandle.contentEl.appendChild(buildPrivacyCard());
+    layoutHandle.contentEl.appendChild(buildRetentionCard());
     layoutHandle.contentEl.appendChild(buildRegistrationCard());
     layoutHandle.contentEl.appendChild(buildTeamsCard());
     layoutHandle.contentEl.appendChild(buildAdminCard());

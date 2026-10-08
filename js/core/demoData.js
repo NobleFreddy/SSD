@@ -43,48 +43,52 @@ SSD.DemoData = (function () {
     return availability;
   }
 
+  /** Startpasswort der Beispielkonten (muss bei der ersten Anmeldung geändert werden). */
+  const PASSWORD = 'willkommen';
+
   async function seed() {
     const rng = U.createSeededRandom(20240915);
-    const state = SSD.Store.getState();
     const schoolYearEnd = U.schoolYearEnd();
+    const entries = [];
 
     for (const [firstName, lastName, gender, schoolClass] of NAMES) {
-      const username = U.slugifyUsername(`${firstName}.${lastName}`);
-      const salt = SSD.Auth.generateSalt();
-      const passwordHash = await SSD.Auth.hashPassword('willkommen', salt);
-      state.students.push(SSD.Models.createStudent({
+      entries.push({
         firstName, lastName, gender, schoolClass, role: 'student',
         yearGroup: schoolYearEnd + (13 - (Number(schoolClass.replace(/\D/g, '')) || 10)), // Abijahrgang (G9)
-        username, passwordHash, salt,
-        availability: buildAvailability(rng),
-      }));
+        username: U.slugifyUsername(`${firstName}.${lastName}`),
+        password: PASSWORD,
+      });
     }
-
     for (const [firstName, lastName, gender, schoolClass] of AZUBI_NAMES) {
-      const username = U.slugifyUsername(`${firstName}.${lastName}`);
-      const salt = SSD.Auth.generateSalt();
-      const passwordHash = await SSD.Auth.hashPassword('willkommen', salt);
-      state.students.push(SSD.Models.createStudent({
-        firstName, lastName, gender, schoolClass, role: 'azubi',
-        yearGroup: null,
-        username, passwordHash, salt,
-        availability: buildAvailability(rng),
-      }));
+      entries.push({
+        firstName, lastName, gender, schoolClass, role: 'azubi', yearGroup: null,
+        username: U.slugifyUsername(`${firstName}.${lastName}`),
+        password: PASSWORD,
+      });
     }
+    // Verfügbarkeiten gleich mit anlegen (gleiche Reihenfolge wie bisher, damit die Beispiele reproduzierbar bleiben)
+    const availabilities = entries.map(() => buildAvailability(rng));
+    const { students } = await SSD.StudentService.createMany(entries);
 
-    const nextMonth = U.addDays(U.today(), 28);
-    state.specialDays.push(SSD.Models.createSpecialDay({
-      type: 'ferien', label: 'Herbstferien',
-      startDate: U.toIsoDate(nextMonth), endDate: U.toIsoDate(U.addDays(nextMonth, 9)),
-    }));
-    const examDay = U.addDays(U.today(), 9);
-    state.specialDays.push(SSD.Models.createSpecialDay({
-      type: 'klausurtag', label: 'Zentrale Klausuren Jgst. 11/12',
-      startDate: U.toIsoDate(examDay), endDate: U.toIsoDate(examDay),
-    }));
+    SSD.Store.commit('Beispieldaten ergänzt', (draft) => {
+      students.forEach((student, i) => {
+        const target = draft.students.find((s) => s.id === student.id);
+        if (target) target.availability = availabilities[i];
+      });
+      const nextMonth = U.addDays(U.today(), 28);
+      draft.specialDays.push(SSD.Models.createSpecialDay({
+        type: 'ferien', label: 'Herbstferien',
+        startDate: U.toIsoDate(nextMonth), endDate: U.toIsoDate(U.addDays(nextMonth, 9)),
+      }));
+      const examDay = U.addDays(U.today(), 9);
+      draft.specialDays.push(SSD.Models.createSpecialDay({
+        type: 'klausurtag', label: 'Zentrale Klausuren Jgst. 11/12',
+        startDate: U.toIsoDate(examDay), endDate: U.toIsoDate(examDay),
+      }));
+    }, { trackHistory: false });
 
     await SSD.Store.forceSave();
   }
 
-  return { seed };
+  return { seed, PASSWORD };
 })();
