@@ -130,6 +130,31 @@ SSD.Views.AdminDashboard = (function () {
       frag.appendChild(requestNotice);
     }
 
+    // Verhinderte Personen in eingeteilten Diensten (Klausur, gesperrt, deaktiviert)
+    const W = SSD.WeeklyUpdateService;
+    const nextMondayIso = W.upcomingMonday(W.berlinParts(new Date()).dateIso);
+    const thisMondayIso = U.toIsoDate(U.getMondayOfWeek(U.today()));
+    const blockedNow = W.findConflicts(thisMondayIso).filter((c) => c.date >= todayIso);
+    const blockedNext = W.settings().lastRunWeek === nextMondayIso ? [] : W.findConflicts(nextMondayIso);
+    if (blockedNow.length || blockedNext.length) {
+      const weeklyOn = W.settings().enabled !== false;
+      const blockedNotice = U.el('div', { class: 'notice-box', style: 'cursor:pointer;' }, [
+        U.el('span', { html: SSD.Icons.svg('userAbsent', { size: 20 }) }),
+        U.el('div', {}, [
+          U.el('strong', {}, [`Eingeteilte Personen verhindert: ${[
+            blockedNow.length ? `${blockedNow.length} in dieser Woche` : null,
+            blockedNext.length ? `${blockedNext.length} in der kommenden Woche` : null,
+          ].filter(Boolean).join(', ')}`]),
+          U.el('p', {}, [[
+            blockedNext.length ? (weeklyOn ? 'Für die kommende Woche sucht die App am Sonntag um 12 Uhr automatisch Ersatz.' : 'Die Wochen-Aktualisierung ist ausgeschaltet.') : null,
+            blockedNow.length ? 'Für diese Woche bitte im Dienstplan über „Abwesenheit melden“ Ersatz suchen.' : null,
+          ].filter(Boolean).join(' ') + ' Klicken, um den Dienstplan zu öffnen.']),
+        ]),
+      ]);
+      blockedNotice.addEventListener('click', () => SSD.Router.navigate('/admin/schedule'));
+      frag.appendChild(blockedNotice);
+    }
+
     if (!capacity.sufficient) {
       frag.appendChild(U.el('div', { class: 'notice-box' }, [
         U.el('span', { html: SSD.Icons.svg('warning', { size: 20 }) }),

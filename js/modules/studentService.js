@@ -251,13 +251,9 @@ SSD.StudentService = (function () {
     });
   }
 
+  /** Standardwoche ändern (Wochen und Klausuren: SSD.AvailabilityService). */
   function setAvailabilityCell(id, dayKey, blockIndex, newState) {
-    SSD.Store.commit('Verfügbarkeit geändert', (draft) => {
-      const student = draft.students.find((s) => s.id === id);
-      if (!student) return;
-      student.availability[dayKey][blockIndex] = newState;
-      student.availabilityUpdatedAt = new Date().toISOString();
-    });
+    SSD.AvailabilityService.setCell(id, 'template', dayKey, blockIndex, newState);
   }
 
   /* ---------------------------------------------------------------------

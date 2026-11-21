@@ -14,6 +14,7 @@ live aktuellen Stand sehen (siehe [Datenmodell & Datenhaltung](#datenmodell--dat
 - [Architektur](#architektur)
 - [Der Planungsalgorithmus](#der-planungsalgorithmus)
 - [Vertretungsmodus](#vertretungsmodus)
+- [Verfügbarkeit, Klausuren & Wochen-Aktualisierung](#verfügbarkeit-klausuren--wochen-aktualisierung)
 - [Datenmodell & Datenhaltung](#datenmodell--datenhaltung)
 - [Rollen & Rechte](#rollen--rechte)
 - [Team-Koordination](#team-koordination)
@@ -231,6 +232,56 @@ oder genau diesen Dienst schon einmal abgegeben hat.
   der Team-Verwaltung und als Hinweis in der Admin-Übersicht („… davon für
   heute“), jeweils mit der Markierung Heute/Morgen.
 
+## Verfügbarkeit, Klausuren & Wochen-Aktualisierung
+
+**Verfügbarkeit nach Wochen.** Jede Person hat eine *Standardwoche*. Sieht
+eine Woche anders aus, trägt sie diese Woche einzeln ein — bis zu acht
+Wochen im Voraus (Reiter „KW …“ in *Meine Verfügbarkeit*). Die erste
+Änderung legt einen eigenen Eintrag als Kopie der Standardwoche an,
+„Wie Standardwoche“ verwirft ihn wieder. Für Sanis gilt die Änderungsfrist je
+Woche (z. B. zwei Tage vor ihrem Montag), für weiter entfernte Wochen ist sie
+offen. Der Administrator kann unter *Schülerverwaltung → Verfügbarkeit &
+Klausuren* (Kalender-Symbol) die Angaben aller Personen ohne Frist ändern.
+
+**Klausuren und feste Termine.** Sanis tragen sie mit Zeitraum und Stunden
+(oder ganzem Tag) ein, auch nach Ablauf der Änderungsfrist. In dieser Zeit
+plant der Algorithmus sie nicht ein. Den Titel sehen nur die Person und die
+Administration. Liegt bereits ein Dienst in der Klausurzeit, den die
+Wochen-Aktualisierung nicht mehr erfasst (laufende Woche), bietet die App an,
+sofort eine Vertretung anzufordern.
+
+Welche Angabe gilt, entscheidet überall dieselbe Funktion
+(`SSD.AvailabilityService.stateAt`): Klausur → Wocheneintrag → Standardwoche.
+
+**Wochen-Aktualisierung (sonntags 12 Uhr).** Der Dienstplan wird nicht neu
+berechnet. Für die kommende Woche prüft
+[`js/modules/weeklyUpdateService.js`](js/modules/weeklyUpdateService.js) nur,
+ob eingeteilte Personen verhindert sind: Klausur/Termin, für den Block
+„Gesperrt“ oder Konto deaktiviert. Für genau diese Plätze sucht sie Ersatz,
+nach denselben Regeln wie jede Vertretung (Verfügbarkeit, Wochenlimit,
+Paar-Regeln, niemand, der an dem Tag selbst ausfällt). Findet sich niemand,
+bleibt der Platz offen. Eingeteilte Personen sehen einen Hinweis im
+Dashboard, Teams erhält eine Meldung (ohne Gründe). „Nicht verfügbar“ löst
+keinen Ersatz aus, weil der Algorithmus beim Auffüllen von Lücken bewusst
+auch solche Zeiten nutzt.
+
+Den Lauf übernimmt der Server, damit er auch stattfindet, wenn niemand die
+App geöffnet hat: Ein pg_cron-Job ruft sonntags um 10, 11 und 12 Uhr UTC die
+Edge Function [`ssd-weekly-update`](supabase/functions/ssd-weekly-update)
+auf; sie arbeitet nur einmal pro Woche, sobald es in Berlin Sonntag ab 12 Uhr
+ist (Sommer- und Winterzeit). Sie führt denselben App-Code aus — gebündelt
+mit `node tools/build-weekly-function.js` (nach Änderungen an den dort
+genannten Modulen neu bündeln und die Funktion neu veröffentlichen).
+Die Aktualisierung ist **standardmäßig ausgeschaltet**, damit ein bestehender
+Plan nicht ungefragt verändert wird. Unter *Einstellungen → Allgemein* lässt
+sie sich einschalten,
+die kommende Woche vorab prüfen und bei Bedarf sofort umsetzen; die
+Übersicht zeigt verhinderte Personen in dieser und der kommenden Woche.
+
+**Veranstaltungen von Hand zuordnen.** Im Dialog *Teilnehmer:innen* einer
+Veranstaltung trägt der Administrator Personen direkt ein — über die
+Kapazität hinaus nur nach Rückfrage.
+
 ## Datenmodell & Datenhaltung
 
 Der komplette Anwendungszustand ist ein einziges JSON-Objekt
@@ -241,6 +292,10 @@ Der komplette Anwendungszustand ist ein einziges JSON-Objekt
   dutyBlockConfig, settings, schedule: { entries[] }, events[], tasks[],
   materials[], announcements[], meetings[], teamsOutbox[], meta }
 ```
+
+Personen haben zusätzlich `availabilityWeeks` (Wocheneinträge, Schlüssel =
+Montag) und `exams` (Klausuren/Termine); `settings.weeklyUpdate` hält den
+letzten Wochenlauf fest.
 
 Neue Felder ergänzt `migrateIfNeeded` ([`js/core/storage.js`](js/core/storage.js))
 beim Laden mit Standardwerten — bestehende Daten bleiben unverändert erhalten.
@@ -465,7 +520,8 @@ die Nutzung von Teams mit der Schule abstimmen.
   erledigte Aufgaben und Materialanfragen eines Schuljahres werden standardmäßig
   zwei Monate nach Schuljahresende gelöscht (*Einstellungen → Aufbewahrung*,
   automatisch beim Öffnen der Administration). Abgelaufene Pinnwand-Beiträge,
-  nie freigeschaltete Registrierungen und Teams-Meldungen nach 30 Tagen.
+  nie freigeschaltete Registrierungen und Teams-Meldungen nach 30 Tagen,
+  vergangene Wochen-Verfügbarkeiten und Klausuren 30 Tage nach ihrem Ende.
 - **Mein Konto** im Schülerbereich: eigenes Passwort ändern, eigene
   Engagement-Zahlen sehen, Kopie aller eigenen Daten herunterladen
   (Art. 15/20 DSGVO).
@@ -489,7 +545,15 @@ SQL-Editor ausführen. Beim Umstieg von der früheren Version: zuerst
 `20261009_ssd_secure_access.sql` (ergänzt nur Funktionen), dann die neue
 App-Version veröffentlichen, danach `20261009_ssd_secure_access_cutover.sql`
 (übernimmt die alten Passwort-Hashes, entfernt sie aus dem Datenbestand und
-sperrt den direkten Tabellenzugriff).
+sperrt den direkten Tabellenzugriff). Für die Wochen-Aktualisierung zuerst die
+Edge Function `ssd-weekly-update` (Ordner `supabase/functions`, ohne
+JWT-Prüfung — sie schützt sich selbst über die Uhrzeit und den
+Wochenvermerk) veröffentlichen, dann `20261120_ssd_planning.sql` ausführen
+(Schutz für Klausuren und Wocheneinträge, Zeitplan).
+
+**Tests (lokal):** `node dev/tests/test-secure.js`, `test-planning.js` und
+`test-weekly-function.js` prüfen die App gegen die nachgebildete Datenbank
+`dev/fakeSupabase.js` (der Ordner `dev/` ist nicht im Repository).
 
 **Teams-Benachrichtigungen:** Die Workflow-Adresse liegt nur verschlüsselt im
 Supabase Vault und ist über die API nicht erreichbar; Versandfunktion und

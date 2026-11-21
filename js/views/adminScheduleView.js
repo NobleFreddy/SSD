@@ -41,10 +41,10 @@ SSD.Views.AdminSchedule = (function () {
     if (!student) return conflicts;
     if (!student.active) conflicts.push('Konto ist deaktiviert');
 
-    const blockIdx = U.DUTY_BLOCK_KEYS.indexOf(block);
-    const availState = student.availability[weekday][blockIdx];
-    if (availState === 'blocked') conflicts.push('Für diesen Termin gesperrt (Klausur/Termin)');
-    else if (availState === 'unavailable') conflicts.push('Als nicht verfügbar eingetragen');
+    const reason = SSD.AvailabilityService.reasonAt(student, dateIso, block);
+    if (reason.source === 'exam') conflicts.push(`Klausur/Termin eingetragen${reason.exam.title ? `: ${reason.exam.title}` : ''}`);
+    else if (reason.state === 'blocked') conflicts.push('Für diesen Termin gesperrt');
+    else if (reason.state === 'unavailable') conflicts.push(reason.source === 'week' ? 'Für diese Woche als nicht verfügbar eingetragen' : 'Als nicht verfügbar eingetragen');
 
     const state = SSD.Store.getState();
     const entryHasPerson = (e) => e.studentIds.includes(studentId) || e.azubiId === studentId;

@@ -14,11 +14,6 @@ SSD.Views.StudentDashboard = (function () {
   'use strict';
 
   const U = SSD.Utils;
-  const OPTION_DEFS = [
-    { key: 'available', label: 'Verfügbar' },
-    { key: 'unavailable', label: 'Nicht verfügbar' },
-    { key: 'blocked', label: 'Gesperrt' },
-  ];
 
   function applyStoredTheme() {
     let theme = 'light';
@@ -62,87 +57,28 @@ SSD.Views.StudentDashboard = (function () {
     return { el: topbar, cleanup: saveIndicatorHandle.cleanup };
   }
 
-  function buildAvailabilityGrid(student, windowInfo) {
-    const card = U.el('div', { class: 'card animate-rise-in' });
-    card.appendChild(U.el('div', { class: 'card__header' }, [
-      U.el('div', {}, [
-        U.el('div', { class: 'card__title' }, ['Mein Verfügbarkeits-Stundenplan']),
-        U.el('div', { class: 'card__subtitle' }, ['Für jeden Block: Verfügbar, Nicht verfügbar oder Dienst gesperrt.']),
+  /** Verfügbarkeit: Standardwoche und die kommenden Wochen (SSD.AvailabilityEditor). */
+  function buildAvailabilityCard(student) {
+    const hadReminder = SSD.StudentService.needsAvailabilityReminder(student);
+    return U.el('div', { class: 'card animate-rise-in' }, [
+      U.el('div', { class: 'card__header' }, [
+        U.el('div', {}, [
+          U.el('div', { class: 'card__title' }, ['Meine Verfügbarkeit']),
+          U.el('div', { class: 'card__subtitle' }, [`Standardwoche und, wenn eine Woche anders aussieht, bis zu ${SSD.AvailabilityService.WEEKS_AHEAD} Wochen im Voraus.`]),
+        ]),
       ]),
-      windowInfo.isOpen
-        ? U.el('span', { class: 'deadline-pill', html: SSD.Icons.svg('unlock', { size: 15 }) }, [` Änderbar bis ${U.formatDateMedium(windowInfo.lockDate)}`])
-        : U.el('span', { class: 'deadline-pill deadline-pill--locked', html: SSD.Icons.svg('lock', { size: 15 }) }, [` Gesperrt bis ${U.formatDateMedium(windowInfo.nextMonday)}`]),
-    ]));
+      U.el('div', { class: 'card__body' }, [SSD.AvailabilityEditor.render({
+        studentId: student.id,
+        onChange: () => { if (hadReminder) refreshChrome(SSD.Auth.getCurrentStudent()); }, // Erinnerungs-Hinweis ist damit erledigt
+      })]),
+    ]);
+  }
 
-    const body = U.el('div', { class: 'card__body' });
-    const gridWrap = U.el('div', { class: 'week-grid-wrap' });
-    const grid = U.el('div', { class: 'week-grid' });
-
-    grid.appendChild(U.el('div', { class: 'week-grid__corner' }));
-    const monday = U.getMondayOfWeek(U.today());
-    U.WEEKDAY_KEYS.forEach((day, i) => {
-      const date = U.addDays(monday, i);
-      grid.appendChild(U.el('div', { class: 'week-grid__day-head' }, [
-        U.WEEKDAY_LABELS[day],
-        U.el('span', { class: 'date' }, [U.formatDateShort(date)]),
-      ]));
-    });
-
-    U.DUTY_BLOCKS.forEach((block, blockIdx) => {
-      grid.appendChild(U.el('div', { class: 'week-grid__block-label' }, [
-        block.short,
-        U.el('span', {}, [block.label]),
-      ]));
-
-      U.WEEKDAY_KEYS.forEach((day) => {
-        const blockEnabled = SSD.CalendarService.isBlockEnabled(day, block.key);
-        const currentState = student.availability[day][blockIdx];
-        const cell = U.el('div', { class: 'avail-cell' });
-
-        if (!blockEnabled) {
-          cell.appendChild(U.el('div', { class: 'avail-option', style: 'color:var(--text-tertiary); cursor:default;' }, ['Kein Dienst']));
-        } else {
-          OPTION_DEFS.forEach((opt) => {
-            const isSelected = currentState === opt.key;
-            const btn = U.el('button', {
-              type: 'button',
-              class: `avail-option${isSelected ? ` is-selected--${opt.key}` : ''}`,
-              disabled: !windowInfo.isOpen,
-              'data-tooltip': opt.key === 'blocked' ? 'z. B. Klausur, Arzttermin, wichtiger Termin' : undefined,
-            }, [opt.label]);
-            btn.addEventListener('click', () => {
-              const hadReminder = SSD.StudentService.needsAvailabilityReminder(SSD.Auth.getCurrentStudent());
-              SSD.StudentService.setAvailabilityCell(student.id, day, blockIdx, opt.key);
-              SSD.Toast.show({ type: 'success', title: 'Gespeichert', message: `${U.WEEKDAY_LABELS[day]}, ${block.label}: ${opt.label}`, duration: 1800 });
-              refreshCellVisuals(cell, opt.key);
-              if (hadReminder) refreshChrome(SSD.Auth.getCurrentStudent()); // Erinnerungs-Hinweis ist damit erledigt
-            });
-            cell.appendChild(btn);
-          });
-        }
-        grid.appendChild(cell);
-      });
-    });
-
-    function refreshCellVisuals(cell, selectedKey) {
-      U.qsa('.avail-option', cell).forEach((btn) => {
-        OPTION_DEFS.forEach((opt) => btn.classList.remove(`is-selected--${opt.key}`));
-      });
-      const idx = OPTION_DEFS.findIndex((o) => o.key === selectedKey);
-      if (idx >= 0) cell.children[idx].classList.add(`is-selected--${selectedKey}`);
-    }
-
-    gridWrap.appendChild(grid);
-    body.appendChild(gridWrap);
-
-    body.appendChild(U.el('div', { class: 'legend', style: 'margin-top:20px;' }, [
-      U.el('div', { class: 'legend__item' }, [U.el('span', { class: 'legend__swatch', style: 'background:var(--color-success-500)' }), 'Verfügbar']),
-      U.el('div', { class: 'legend__item' }, [U.el('span', { class: 'legend__swatch', style: 'background:var(--color-gray-400)' }), 'Nicht verfügbar']),
-      U.el('div', { class: 'legend__item' }, [U.el('span', { class: 'legend__swatch', style: 'background:var(--color-danger-500)' }), 'Gesperrt (Klausur, Termin, …)']),
-    ]));
-
-    card.appendChild(body);
-    return card;
+  function buildExamsCard(student) {
+    return U.el('div', { class: 'card animate-rise-in' }, [
+      U.el('div', { class: 'card__header' }, [U.el('div', { class: 'card__title' }, ['Klausuren & feste Termine'])]),
+      U.el('div', { class: 'card__body' }, [SSD.ExamsPanel.render({ studentId: student.id })]),
+    ]);
   }
 
   function buildDutiesCard(student, summary) {
@@ -1193,11 +1129,11 @@ SSD.Views.StudentDashboard = (function () {
       tabBody.appendChild(buildTeamLeadTab(student));
       return;
     }
-    const windowInfo = SSD.StudentService.getAvailabilityWindow();
     const summary = SSD.StudentService.getDutySummary(student.id);
     const layout = U.el('div', { class: 'two-col-layout' });
     layout.appendChild(U.el('div', { class: 'stack gap-5' }, [
-      buildAvailabilityGrid(student, windowInfo),
+      buildAvailabilityCard(student),
+      buildExamsCard(student),
       buildDutiesCard(student, summary),
     ]));
     layout.appendChild(buildSideColumn(student, summary));

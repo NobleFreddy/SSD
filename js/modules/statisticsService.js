@@ -14,7 +14,7 @@ SSD.StatisticsService = (function () {
   const U = SSD.Utils;
 
   function hasAnyAvailability(student) {
-    return Object.values(student.availability || {}).some((day) => day.includes('available'));
+    return SSD.AvailabilityService.hasAnyAvailable(student);
   }
 
   /** Anzahl der Wochen, für die es Diensteinträge gibt (mind. 1). */

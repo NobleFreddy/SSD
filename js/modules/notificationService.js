@@ -75,12 +75,13 @@ SSD.NotificationService = (function () {
    * aufrufen. Ohne aktive Teams-Anbindung oder bei abgeschalteter Kategorie
    * passiert nichts.
    */
-  function add(draft, category, text) {
+  /** @param {{by?: string}} [opts] — Absender überschreiben (z. B. bei der automatischen Wochen-Aktualisierung) */
+  function add(draft, category, text, opts) {
     const teams = draft.settings && draft.settings.teams;
     if (!teams || !teams.enabled) return;
     if (category !== 'test' && teams.categories && teams.categories[category] === false) return;
     if (!Array.isArray(draft.teamsOutbox)) draft.teamsOutbox = [];
-    draft.teamsOutbox.push({ id: U.generateId('ntf'), at: new Date().toISOString(), category, text, by: actorName() });
+    draft.teamsOutbox.push({ id: U.generateId('ntf'), at: new Date().toISOString(), category, text, by: (opts && opts.by) || actorName() });
     if (draft.teamsOutbox.length > MAX_OUTBOX) draft.teamsOutbox.splice(0, draft.teamsOutbox.length - MAX_OUTBOX);
   }
 

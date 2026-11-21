@@ -162,6 +162,21 @@ SSD.Views.AdminStudents = (function () {
   }
 
   /* ---------------------------------------------------------------------
+   * Verfügbarkeit & Klausuren einer Person (Administrator, ohne Änderungsfrist)
+   * ------------------------------------------------------------------- */
+
+  function openAvailabilityModal(student) {
+    const body = U.el('div', { class: 'stack gap-5' }, [
+      U.el('p', { class: 'text-secondary', style: 'margin:0;' }, ['Als Administrator können Sie alle Wochen ändern, auch nach Ablauf der Änderungsfrist. Die Person sieht die Änderungen in ihrem Dashboard.']),
+      U.el('div', { class: 'section-label' }, ['Verfügbarkeit']),
+      SSD.AvailabilityEditor.render({ studentId: student.id, admin: true }),
+      U.el('div', { class: 'section-label' }, ['Klausuren & feste Termine']),
+      SSD.ExamsPanel.render({ studentId: student.id, admin: true }),
+    ]);
+    SSD.Dialog.open({ title: `Verfügbarkeit — ${SSD.StudentService.fullName(student)}`, body, wide: true, footerButtons: [{ label: 'Fertig', variant: 'primary' }] });
+  }
+
+  /* ---------------------------------------------------------------------
    * CSV-Import-Dialog
    * ------------------------------------------------------------------- */
 
@@ -350,6 +365,8 @@ SSD.Views.AdminStudents = (function () {
       const roleLabel = SSD.Models.ROLES.find((r) => r.key === (student.role || 'student'))?.label;
       const editBtn = U.el('button', { class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': 'Bearbeiten', html: SSD.Icons.svg('edit', { size: 15 }) });
       editBtn.addEventListener('click', () => openStudentModal(student));
+      const availBtn = U.el('button', { class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': 'Verfügbarkeit & Klausuren', 'aria-label': 'Verfügbarkeit & Klausuren', html: SSD.Icons.svg('calendarCheck', { size: 15 }) });
+      availBtn.addEventListener('click', () => openAvailabilityModal(student));
       const toggleBtn = U.el('button', {
         class: 'btn btn--icon btn--sm btn--ghost', 'data-tooltip': student.active ? 'Deaktivieren' : 'Aktivieren',
         html: SSD.Icons.svg(student.active ? 'lock' : 'unlock', { size: 15 }),
@@ -388,7 +405,7 @@ SSD.Views.AdminStudents = (function () {
             ? U.el('span', { class: 'badge badge--warning' }, ['Neu — wartet'])
             : U.el('span', { class: `badge ${student.active ? 'badge--success' : ''}` }, [student.active ? 'Aktiv' : 'Inaktiv']),
         ]),
-        U.el('td', {}, [U.el('div', { class: 'data-table__actions' }, [editBtn, toggleBtn, deleteBtn])]),
+        U.el('td', {}, [U.el('div', { class: 'data-table__actions' }, [availBtn, editBtn, toggleBtn, deleteBtn])]),
       ]);
       row.querySelector('.data-table__name-cell').addEventListener('click', () => openStudentModal(student));
       tbody.appendChild(row);

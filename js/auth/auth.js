@@ -51,7 +51,9 @@ SSD.Auth = (function () {
   }
 
   /** Abmelden: Sitzung beim Server beenden und alle Daten aus diesem Tab entfernen. */
-  function logout() {
+  async function logout() {
+    // Eine eben gemachte Änderung erst fertig speichern (braucht noch die Sitzung).
+    try { await SSD.Store.settle(); } catch (err) { /* Fehler meldet die Speicherung selbst */ }
     const token = getToken();
     if (token) SSD.Storage.call('ssd_logout', { p_token: token }).catch(() => { /* offline — läuft serverseitig ohnehin ab */ });
     clearSession();

@@ -74,6 +74,8 @@ SSD.Views.AdminSettings = (function () {
           (val) => commit({ autoSubstitution: val }, val ? 'Vertretungen werden ab jetzt automatisch eingeteilt.' : 'Abmeldungen bleiben ab jetzt als „Vertretung gesucht“ offen.')
         ),
         U.el('hr', { class: 'divider' }),
+        buildWeeklyUpdateSection(s, commit),
+        U.el('hr', { class: 'divider' }),
         switchRow(
           'Sanisprecher:innen sehen die Engagement-Übersicht',
           'Zeigt der Team-Leitung die Zahlen aller Personen (Dienste, Einspringen, Teamtreffen …). Jede Person sieht ihre eigenen Zahlen ohnehin unter „Mein Konto“. Ob die Team-Leitung das braucht, entscheidet die Schule.',
@@ -87,6 +89,74 @@ SSD.Views.AdminSettings = (function () {
         ]),
       ]),
     ]);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Wochen-Aktualisierung (sonntags 12 Uhr)
+   * ------------------------------------------------------------------- */
+
+  function buildWeeklyUpdateSection(s, commit) {
+    const W = SSD.WeeklyUpdateService;
+    const cfg = Object.assign(SSD.Models.createDefaultWeeklyUpdateSettings(), s.weeklyUpdate || {});
+    const checkBtn = U.el('button', { type: 'button', class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('userSearch', { size: 14 }) }, ['Kommende Woche jetzt prüfen']);
+    checkBtn.addEventListener('click', () => openWeeklyPreview());
+    return U.el('div', { class: 'stack gap-2' }, [
+      switchRow(
+        'Dienstplan sonntags um 12 Uhr aktualisieren',
+        'Standardmäßig aus. Der Plan wird nicht neu berechnet. Die App prüft nur die kommende Woche: Wer dann eine Klausur hat, für den Block „Gesperrt“ eingetragen ist oder nicht mehr aktiv ist, wird ersetzt — nach denselben Regeln wie jede Vertretung. Findet sich niemand, bleibt der Platz offen. Die eingeteilten Personen sehen einen Hinweis, Teams erhält eine Meldung.',
+        cfg.enabled !== false,
+        (val) => commit({ weeklyUpdate: Object.assign({}, cfg, { enabled: val }) }, val ? 'Die Wochen-Aktualisierung ist eingeschaltet.' : 'Die Wochen-Aktualisierung ist ausgeschaltet.')
+      ),
+      U.el('div', { class: 'cluster gap-3', style: 'justify-content:space-between;' }, [
+        U.el('span', { class: 'text-secondary', style: 'font-size:var(--font-size-sm);' }, [W.describeLastRun()]),
+        checkBtn,
+      ]),
+    ]);
+  }
+
+  /** Vorschau für die kommende Woche; auf Wunsch sofort umsetzen (z. B. wenn Sonntag schon vorbei ist). */
+  function openWeeklyPreview() {
+    const W = SSD.WeeklyUpdateService;
+    const mondayIso = W.upcomingMonday(W.berlinParts(new Date()).dateIso);
+    const preview = W.run({ mondayIso, dryRun: true });
+    const name = (id) => {
+      const p = SSD.StudentService.getById(id);
+      return p ? SSD.StudentService.fullName(p) : '(nicht mehr im Team)';
+    };
+    const reasons = new Map(preview.conflicts.map((c) => [`${c.entryId}|${c.personId}`, c.reason]));
+    const entryOf = (id) => SSD.Store.getState().schedule.entries.find((e) => e.id === id);
+    const rows = preview.proposals.map((p) => {
+      const entry = entryOf(p.entryId);
+      return U.el('tr', {}, [
+        U.el('td', {}, [entry ? `${U.WEEKDAY_LABELS_SHORT[entry.weekday]}, ${U.formatDateShort(U.parseIsoDate(entry.date))}, ${U.blockLabel(entry.block)}` : '']),
+        U.el('td', {}, [name(p.absentStudentId), U.el('span', { class: 'text-tertiary', style: 'display:block; font-size:var(--font-size-xs);' }, [reasons.get(`${p.entryId}|${p.absentStudentId}`) || ''])]),
+        U.el('td', {}, p.replacementStudentId ? [name(p.replacementStudentId)] : [
+          U.el('span', { class: 'badge badge--warning' }, ['kein Ersatz — Platz bleibt offen']),
+          U.el('span', { class: 'text-tertiary', style: 'display:block; font-size:var(--font-size-xs); margin-top:4px;' }, [p.reasonText || '']),
+        ]),
+      ]);
+    });
+    const body = U.el('div', { class: 'stack gap-3' }, [
+      U.el('p', { style: 'margin:0;' }, [preview.conflicts.length
+        ? `${W.weekLabel(mondayIso)}: ${preview.summary.checked} Dienste geprüft. ${preview.conflicts.length === 1 ? 'Eine eingeteilte Person ist' : `${preview.conflicts.length} eingeteilte Personen sind`} verhindert.`
+        : `${W.weekLabel(mondayIso)}: ${preview.summary.checked} Dienste geprüft — niemand ist verhindert.`]),
+      rows.length ? U.el('div', { class: 'table-wrap' }, [U.el('table', { class: 'table' }, [
+        U.el('thead', {}, [U.el('tr', {}, [U.el('th', {}, ['Dienst']), U.el('th', {}, ['Verhindert']), U.el('th', {}, ['Ersatz'])])]),
+        U.el('tbody', {}, rows),
+      ])]) : null,
+      W.settings().lastRunWeek === mondayIso ? U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, ['Für diese Woche ist die Aktualisierung bereits gelaufen; Umsetzen prüft sie erneut.']) : null,
+    ]);
+    const buttons = [{ label: preview.conflicts.length ? 'Abbrechen' : 'Schließen', variant: 'secondary' }];
+    if (preview.conflicts.length) {
+      buttons.push({
+        label: 'Jetzt umsetzen', variant: 'primary',
+        onClick: () => {
+          const result = W.run({ mondayIso, trigger: 'manual' });
+          SSD.Toast.success('Aktualisiert', `${result.summary.replaced} neu besetzt, ${result.summary.open} offen.`);
+        },
+      });
+    }
+    SSD.Dialog.open({ title: 'Wochen-Aktualisierung', body, wide: true, footerButtons: buttons });
   }
 
   function buildRegistrationCard() {

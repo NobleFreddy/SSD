@@ -261,8 +261,8 @@ SSD.Scheduler = (function () {
      * Lücken-Füllung (siehe `relaxedSettingsFrom`) bewusst zugelassen.
      */
     availabilityAllows(student, slot) {
-      const blockIdx = U.DUTY_BLOCK_KEYS.indexOf(slot.block);
-      const availState = student.availability[slot.weekday][blockIdx];
+      // Klausuren, Wocheneintrag oder Standardwoche — siehe SSD.AvailabilityService.stateAt
+      const availState = SSD.AvailabilityService.stateAt(student, slot.date, slot.block, slot.weekday, slot.weekMonday);
       if (availState === 'blocked') return false;
       return availState === 'available' || !!this.settings.relaxedAvailability;
     }

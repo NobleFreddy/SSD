@@ -130,6 +130,35 @@ SSD.Views.AdminEvents = (function () {
       ]);
     }
 
+    /** Personen von Hand eintragen — auch über die Kapazität hinaus, nach Rückfrage. */
+    function buildManualAddRow(fresh) {
+      const candidates = SSD.StudentService.getActive()
+        .filter((p) => !fresh.participantIds.includes(p.id))
+        .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
+      if (!candidates.length) return null;
+      const select = U.el('select', { class: 'select', style: 'flex:1; min-width:0;', 'aria-label': 'Person auswählen' }, [
+        U.el('option', { value: '' }, ['Person auswählen …']),
+        ...candidates.map((p) => U.el('option', { value: p.id }, [`${SSD.StudentService.fullName(p)}${p.role === 'azubi' ? ' (Azubi)' : ''}${p.schoolClass ? ` · ${p.schoolClass}` : ''}`])),
+      ]);
+      const addBtn = U.el('button', { type: 'button', class: 'btn btn--primary btn--sm', html: SSD.Icons.svg('plus', { size: 14 }) }, ['Eintragen']);
+      addBtn.addEventListener('click', async () => {
+        if (!select.value) { SSD.Toast.info('Bitte auswählen', 'Wählen Sie zuerst eine Person aus.'); return; }
+        let allowOverCapacity = false;
+        if (fresh.capacity != null && fresh.participantIds.length >= fresh.capacity) {
+          allowOverCapacity = await SSD.Dialog.confirm({ title: 'Veranstaltung ist voll', message: `Alle ${fresh.capacity} Plätze sind belegt. Trotzdem eintragen?`, confirmLabel: 'Trotzdem eintragen' });
+          if (!allowOverCapacity) return;
+        }
+        try {
+          const added = SSD.EventsService.addParticipants(fresh.id, [select.value], { allowOverCapacity });
+          if (added.length) SSD.Toast.success('Eingetragen', `${SSD.StudentService.fullName(added[0])} nimmt teil.`);
+        } catch (err) {
+          SSD.Toast.error('Nicht eingetragen', String(err.message || err));
+        }
+        renderBody();
+      });
+      return U.el('div', { class: 'cluster gap-2', style: 'margin-bottom:12px; padding:10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); flex-wrap:nowrap;' }, [select, addBtn]);
+    }
+
     function renderBody() {
       const fresh = SSD.EventsService.getById(event.id);
       if (!fresh) { SSD.Dialog.close(); return; }
@@ -162,6 +191,8 @@ SSD.Views.AdminEvents = (function () {
 
       body.innerHTML = '';
       body.appendChild(U.el('p', { class: 'text-secondary', style: 'margin:0 0 12px;' }, [fillText]));
+      const manualRow = buildManualAddRow(fresh);
+      if (manualRow) body.appendChild(manualRow);
       const autoFillRow = buildAutoFillRow(fresh);
       if (autoFillRow) body.appendChild(autoFillRow);
       body.appendChild(list);

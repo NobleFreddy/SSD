@@ -62,6 +62,31 @@ SSD.EventsService = (function () {
     });
   }
 
+  /**
+   * Administrator teilt Personen von Hand zu. Über die Kapazität hinaus nur mit
+   * `allowOverCapacity` (die Oberfläche fragt vorher nach).
+   * @returns {object[]} die tatsächlich hinzugefügten Personen
+   */
+  function addParticipants(eventId, personIds, options) {
+    if (!SSD.Auth.isAdminSession()) throw new Error('Nur der Administrator kann Personen eintragen.');
+    const event = getById(eventId);
+    if (!event) throw new Error('Diese Veranstaltung existiert nicht mehr.');
+    const toAdd = Array.from(new Set(personIds))
+      .map((id) => SSD.StudentService.getById(id))
+      .filter((p) => p && !event.participantIds.includes(p.id));
+    if (!toAdd.length) return [];
+    if (event.capacity != null && event.participantIds.length + toAdd.length > event.capacity && !(options && options.allowOverCapacity)) {
+      throw new Error(`Nur noch ${Math.max(0, event.capacity - event.participantIds.length)} Plätze frei — die Veranstaltung wäre sonst ausgebucht.`);
+    }
+    SSD.Store.commit(`Teilnehmende eingetragen: "${event.title}" (+${toAdd.length})`, (draft) => {
+      const target = draft.events.find((e) => e.id === eventId);
+      if (!target) return;
+      toAdd.forEach((p) => { if (!target.participantIds.includes(p.id)) target.participantIds.push(p.id); });
+      SSD.NotificationService.add(draft, 'event', `${target.title}: ${toAdd.length === 1 ? '1 Person' : `${toAdd.length} Personen`} eingeteilt (${toAdd.map((p) => SSD.NotificationService.personName(p.id)).join(', ')}).`);
+    });
+    return toAdd;
+  }
+
   function isFull(event) {
     return event.capacity != null && event.participantIds.length >= event.capacity;
   }
@@ -150,6 +175,6 @@ SSD.EventsService = (function () {
   return {
     getAll, getById, getUpcoming, create, update, remove,
     isFull, isSignedUp, signUp, withdraw, removeParticipant, getParticipants,
-    getParticipationCounts, getFillCandidates, autoFillParticipants,
+    getParticipationCounts, getFillCandidates, autoFillParticipants, addParticipants,
   };
 })();

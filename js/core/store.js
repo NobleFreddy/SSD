@@ -72,6 +72,11 @@ SSD.Store = (function () {
 
   function isLoaded() { return !!state; }
 
+  /** Wartet, bis ein gerade laufender Speichervorgang abgeschlossen ist (z. B. vor dem Abmelden). */
+  async function settle() {
+    while (saveLoop) await saveLoop;
+  }
+
   /** Übernimmt eine per Realtime empfangene fremde Änderung — siehe Modulbeschreibung oben. */
   function applyRemoteState(newData, newVersion) {
     if (dirty) {
@@ -127,6 +132,7 @@ SSD.Store = (function () {
     let result;
     do {
       saveAgain = false;
+      if (!state) { result = { ok: false }; break; } // inzwischen abgemeldet
       result = await SSD.Storage.save(state);
     } while (result.ok && saveAgain);
     // Synchron direkt nach der letzten Prüfung freigeben — so kann keine Änderung "dazwischen" verloren gehen.
@@ -249,7 +255,7 @@ SSD.Store = (function () {
   }
 
   return {
-    load, clear, isLoaded, setPublicInfo, getPublicInfo,
+    load, clear, isLoaded, settle, setPublicInfo, getPublicInfo,
     getState, isSetupComplete,
     commit, replaceState, flush,
     undo, redo, canUndo, canRedo, peekUndoLabel, peekRedoLabel,

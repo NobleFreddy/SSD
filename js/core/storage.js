@@ -250,6 +250,7 @@ SSD.Storage = (function () {
     });
     data.settings.privacy = Object.assign({}, defaults.settings.privacy, storedSettings.privacy || {});
     data.settings.retention = Object.assign({}, defaults.settings.retention, storedSettings.retention || {});
+    data.settings.weeklyUpdate = Object.assign({}, defaults.settings.weeklyUpdate, storedSettings.weeklyUpdate || {});
     if (!Array.isArray(data.teamsOutbox)) data.teamsOutbox = [];
     if (data.admin && typeof data.admin === 'object') {
       delete data.admin.passwordHash;
@@ -263,6 +264,9 @@ SSD.Storage = (function () {
       if (!Array.isArray(s.preferredPartnerIds)) s.preferredPartnerIds = [];
       if (s.availabilityReminderAt === undefined) s.availabilityReminderAt = null;
       if (!s.gender) s.gender = 'n';
+      // Neue, rein ergänzende Felder — vorhandene Verfügbarkeiten bleiben unverändert.
+      if (!s.availabilityWeeks || typeof s.availabilityWeeks !== 'object' || Array.isArray(s.availabilityWeeks)) s.availabilityWeeks = {};
+      if (!Array.isArray(s.exams)) s.exams = [];
     });
     data.schedule = data.schedule || defaults.schedule;
     // Frühere Versionen konnten "Krankheit" als Abwesenheitsgrund speichern (Gesundheitsangabe).

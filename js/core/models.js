@@ -93,6 +93,10 @@ SSD.Models = (function () {
         availability: createEmptyAvailability(),
         availabilityUpdatedAt: now,
         availabilityReminderAt: null, // Erinnerung durch Admin/Team-Leitung — Hinweis bis zur nächsten Änderung/Bestätigung
+        // Abweichende Verfügbarkeit für einzelne Wochen: { 'YYYY-MM-DD' (Montag): { mon: [...], … } }.
+        // Ohne Eintrag gilt für eine Woche die Standardwoche `availability`.
+        availabilityWeeks: {},
+        exams: [], // Klausuren/Termine, siehe createExam — sperren die Person für diese Zeit
         dutyLog: [], // { date, block, partnerId } — Verlauf aller je zugewiesenen Dienste
         createdAt: now,
       },
@@ -164,6 +168,7 @@ SSD.Models = (function () {
       autoSubstitution: true,
       // Engagement-Übersicht (Zahlen aller Personen) auch für Sanisprecher:innen — entscheidet die Schule.
       leadsSeeEngagement: true,
+      weeklyUpdate: createDefaultWeeklyUpdateSettings(),
       weights: createDefaultWeights(),
       yearGroupMode: 'none', // 'none' | 'mixed' | 'same'
       yearGroupRules: [], // { id, a, b, type: 'prefer' | 'avoid' } — a/b = Abijahrgang
@@ -210,6 +215,36 @@ SSD.Models = (function () {
    * (1.8.–31.7.) werden `graceMonths` Monate nach Schuljahresende gelöscht —
    * Zeit genug, um vorher die Engagement-Nachweise zu drucken.
    */
+  /**
+   * Wochen-Aktualisierung: Jeden Sonntag um 12 Uhr prüft der Server die
+   * kommende Woche und sucht nur für Dienste Ersatz, deren Person gesperrt ist
+   * (Klausur, "Gesperrt" in der Verfügbarkeit, Konto deaktiviert). Der übrige
+   * Plan bleibt unverändert. `lastRunWeek` = Montag der zuletzt geprüften Woche.
+   */
+  function createDefaultWeeklyUpdateSettings() {
+    // Standardmäßig aus: Erst wenn der Administrator sie einschaltet, ändert sie den Plan.
+    return { enabled: false, lastRunWeek: null, lastRunAt: null, lastSummary: null };
+  }
+
+  /**
+   * Klausur oder fester Termin einer Person: von `startDate` bis `endDate`
+   * (je einschließlich), in den Blöcken `blocks` (leer = ganzer Tag).
+   */
+  function createExam(overrides = {}) {
+    const today = U.toIsoDate(U.today());
+    return Object.assign(
+      {
+        id: U.generateId('exm'),
+        title: '',
+        startDate: today,
+        endDate: today,
+        blocks: [],
+        createdAt: new Date().toISOString(),
+      },
+      overrides
+    );
+  }
+
   function createDefaultRetentionSettings() {
     return { graceMonths: 2, auto: true, lastRunAt: null };
   }
@@ -391,6 +426,8 @@ SSD.Models = (function () {
     createDefaultTeamsSettings,
     createDefaultPrivacySettings,
     createDefaultRetentionSettings,
+    createDefaultWeeklyUpdateSettings,
+    createExam,
     createDefaultSettings,
     createScheduleEntry,
     createEvent,

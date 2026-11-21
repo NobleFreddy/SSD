@@ -87,7 +87,7 @@ SSD.Views.Privacy = (function () {
         list([
           'Name, Benutzername, Klasse, Abiturjahrgang, Kategorie (Sani/Azubi) und gegebenenfalls Funktion (Sanisprecher:in)',
           'Geschlecht — freiwillig, nur für die Bildung gemischter Teams',
-          'Verfügbarkeiten (freie Stunden), Wunschpartner:innen, Dienste und bisheriger Dienstverlauf',
+          'Verfügbarkeiten (Standardwoche und einzelne Wochen im Voraus), Klausuren und feste Termine (Zeitraum; den Titel sehen nur Sie und die Administration), Wunschpartner:innen, Dienste und bisheriger Dienstverlauf',
           'Abmeldungen und Vertretungen (ohne Angabe von Gründen), Zu- und Absagen sowie Anwesenheit bei Teamtreffen, Anmeldungen zu Veranstaltungen, erledigte Aufgaben, Materialanfragen',
           'Bemerkungen und Hinweise der Administration zur Person',
           'Anmeldedaten: Das Passwort wird nur als nicht umkehrbarer Hash (bcrypt) auf dem Server gespeichert.',
@@ -119,7 +119,7 @@ SSD.Views.Privacy = (function () {
         list([
           'Konten bis zum Ausscheiden aus dem Schulsanitätsdienst; danach löscht die Administration das Konto.',
           `Dienste, Dienstverlauf, Teamtreffen, Veranstaltungen, erledigte Aufgaben und Materialanfragen eines Schuljahres: ${grace ? `${grace} Monat${grace === 1 ? '' : 'e'} nach Schuljahresende` : 'zum Schuljahresende'}.`,
-          'Abgelaufene Pinnwand-Beiträge, nie freigeschaltete Registrierungen und Teams-Meldungen: 30 Tage.',
+          'Abgelaufene Pinnwand-Beiträge, nie freigeschaltete Registrierungen und Teams-Meldungen: 30 Tage; vergangene Wochen-Verfügbarkeiten und Klausuren 30 Tage nach ihrem Ende.',
           'Anmeldungen enden spätestens nach 12 Stunden; das Zugriffsprotokoll wird nach 90 Tagen, Anmeldeversuche nach einem Tag gelöscht.',
         ]),
       ]),
@@ -129,7 +129,7 @@ SSD.Views.Privacy = (function () {
       ]),
 
       section('9. Automatische Einteilung', [
-        p('Dienstpläne und Vertretungen schlägt ein Algorithmus nach festen Regeln vor (Verfügbarkeit, gleichmäßige Verteilung, Teamregeln). Die Administration kann jede Einteilung ändern. Eine automatisierte Entscheidung mit rechtlicher Wirkung im Sinne von Art. 22 DSGVO findet nicht statt.'),
+        p('Dienstpläne und Vertretungen schlägt ein Algorithmus nach festen Regeln vor (Verfügbarkeit, gleichmäßige Verteilung, Teamregeln). Ist die Wochen-Aktualisierung eingeschaltet, prüft die App jeden Sonntag um 12 Uhr die kommende Woche und sucht nur für Personen Ersatz, die dann eine Klausur haben, gesperrt sind oder nicht mehr aktiv sind; der übrige Plan bleibt gleich. Die Administration kann jede Einteilung ändern. Eine automatisierte Entscheidung mit rechtlicher Wirkung im Sinne von Art. 22 DSGVO findet nicht statt.'),
       ]),
 
       section('10. Ihre Rechte', [

@@ -9,7 +9,8 @@
  *     `graceMonths` Monate nach Schuljahresende gelöscht — vorher lassen sich
  *     noch die Engagement-Nachweise drucken.
  *   - Abgelaufene Pinnwand-Beiträge nach 30 Tagen, Registrierungen, die nie
- *     freigeschaltet wurden, nach 30 Tagen, Teams-Meldungen nach 30 Tagen.
+ *     freigeschaltet wurden, nach 30 Tagen, Teams-Meldungen nach 30 Tagen,
+ *     vergangene Wochen-Verfügbarkeiten und Klausuren 30 Tage nach ihrem Ende.
  * Läuft automatisch, sobald der Administrator die App öffnet (abschaltbar),
  * oder per Knopfdruck in den Einstellungen.
  */
@@ -80,9 +81,10 @@ SSD.RetentionService = (function () {
       announcements: (state.announcements || []).filter((a) => (a.visibleUntil ? a.visibleUntil < shortCutoff : day(a.createdAt) < cutoff)).map((a) => a.id),
       pendingRegistrations: state.students.filter((s) => s.pendingApproval && day(s.createdAt) && day(s.createdAt) < shortCutoff).map((s) => s.id),
       teamsOutbox: (state.teamsOutbox || []).filter((n) => n.at && n.at < outboxCutoff).length,
+      availabilityExtras: SSD.AvailabilityService.countPrunable(state, shortCutoff), // vergangene Wocheneinträge und Klausuren
     };
     result.total = result.scheduleEntries.length + result.dutyLogEntries + result.meetings.length + result.events.length
-      + result.tasks.length + result.materials.length + result.announcements.length + result.pendingRegistrations.length + result.teamsOutbox;
+      + result.tasks.length + result.materials.length + result.announcements.length + result.pendingRegistrations.length + result.teamsOutbox + result.availabilityExtras;
     return result;
   }
 
@@ -106,6 +108,7 @@ SSD.RetentionService = (function () {
       draft.announcements = drop(draft.announcements, expired.announcements);
       expired.pendingRegistrations.forEach((id) => SSD.StudentService.removeFromDraft(draft, id));
       draft.teamsOutbox = (draft.teamsOutbox || []).filter((n) => !(n.at && n.at < outboxCutoff));
+      SSD.AvailabilityService.pruneDraft(draft, U.toIsoDate(U.addDays(U.today(), -SHORT_DAYS)));
       draft.settings.retention = Object.assign({}, draft.settings.retention, { lastRunAt: new Date().toISOString() });
     });
     return expired.total;

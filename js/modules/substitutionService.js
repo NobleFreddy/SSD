@@ -316,17 +316,7 @@ SSD.SubstitutionService = (function () {
       .sort((a, b) => (a.date + a.block).localeCompare(b.date + b.block));
     if (!affected.length) return [];
 
-    // Wer ist an welchem Tag selbst verhindert? (offene Anfrage oder bereits abgegebener Dienst)
-    const absentOnDate = new Map();
-    const markAbsent = (dateIso, id) => {
-      if (!id) return;
-      if (!absentOnDate.has(dateIso)) absentOnDate.set(dateIso, new Set());
-      absentOnDate.get(dateIso).add(id);
-    };
-    state.schedule.entries.forEach((e) => {
-      (e.substitutionRequests || []).forEach((r) => markAbsent(e.date, r.studentId));
-      (e.substitutionLog || []).forEach((log) => markAbsent(e.date, log.originalStudentId));
-    });
+    const absentOnDate = buildAbsentOnDate(state);
     const gaveAwayEntry = new Map(affected.map((e) => [e.id, new Set((e.substitutionLog || []).map((log) => log.originalStudentId).filter(Boolean))]));
     const isExcluded = (id, vacancy) =>
       (absentOnDate.get(vacancy.entry.date) || new Set()).has(id) || gaveAwayEntry.get(vacancy.entry.id).has(id);
@@ -338,6 +328,79 @@ SSD.SubstitutionService = (function () {
       absentStudentId: p.absentStudentId,
       isAzubiSeat: p.isAzubiSeat,
       replacementStudentId: p.chosen ? p.chosen.studentId : null,
+    }));
+  }
+
+  /** Wer ist an welchem Tag selbst verhindert? (offene Anfrage oder bereits abgegebener Dienst) */
+  function buildAbsentOnDate(state) {
+    const absentOnDate = new Map();
+    const markAbsent = (dateIso, id) => {
+      if (!id) return;
+      if (!absentOnDate.has(dateIso)) absentOnDate.set(dateIso, new Set());
+      absentOnDate.get(dateIso).add(id);
+    };
+    state.schedule.entries.forEach((e) => {
+      (e.substitutionRequests || []).forEach((r) => markAbsent(e.date, r.studentId));
+      (e.substitutionLog || []).forEach((log) => markAbsent(e.date, log.originalStudentId));
+    });
+    return absentOnDate;
+  }
+
+  /**
+   * Ersatz für einzelne (Dienst, Person)-Paare, z. B. bei der Wochen-
+   * Aktualisierung: Nur die genannte Person ist in genau diesem Dienst
+   * verhindert, an anderen Diensten derselben Woche kann sie weiterhin
+   * eingesetzt werden oder Ersatz sein. Gleiche Regeln wie die übrigen
+   * Vertretungen; ausgeschlossen sind zusätzlich Personen, die an dem Tag
+   * selbst ausfallen. Ändert nichts.
+   * @param {Array<{entryId:string, personId:string}>} conflicts
+   * @returns {Array<{entryId:string, absentStudentId:string, isAzubiSeat:boolean, replacementStudentId:?string, reasonText:string}>}
+   */
+  function proposeForConflicts(conflicts) {
+    const state = SSD.Store.getState();
+    const blockedIn = new Map();
+    conflicts.forEach((c) => {
+      if (!blockedIn.has(c.entryId)) blockedIn.set(c.entryId, new Set());
+      blockedIn.get(c.entryId).add(c.personId);
+    });
+    const entries = state.schedule.entries
+      .filter((e) => blockedIn.has(e.id))
+      .sort((a, b) => (a.date + a.block).localeCompare(b.date + b.block));
+    if (!entries.length) return [];
+
+    const isBlocked = (entry, id) => blockedIn.get(entry.id).has(id);
+    const studentEntries = entries.filter((e) => e.studentIds.some((id) => isBlocked(e, id)));
+    const azubiEntries = entries.filter((e) => e.azubiId && isBlocked(e, e.azubiId));
+    const studentSlots = studentEntries.map((e) => SSD.Scheduler.slotFromEntry(e));
+    const azubiSlots = azubiEntries.map((e) => SSD.Scheduler.slotFromEntry(e));
+
+    const studentContext = new SSD.Scheduler.SchedulingContext(SSD.StudentService.getActiveByRole('student'), state.schedule.entries, studentSlots, state.settings);
+    studentEntries.forEach((entry, i) => {
+      entry.studentIds.filter((id) => !isBlocked(entry, id)).forEach((id) => {
+        if (studentContext.studentsById.has(id)) studentContext.assign(studentSlots[i], id);
+      });
+    });
+    const azubiHistory = SSD.Scheduler.buildAzubiHistoryEntries(new Set(azubiSlots.map((sl) => sl.key)));
+    const azubiContext = new SSD.Scheduler.SchedulingContext(SSD.StudentService.getActiveByRole('azubi'), azubiHistory, azubiSlots, SSD.Scheduler.azubiSettingsFrom(state.settings));
+
+    const vacancies = [];
+    studentEntries.forEach((entry, i) => {
+      entry.studentIds.forEach((id) => {
+        if (isBlocked(entry, id)) vacancies.push({ entry, slot: studentSlots[i], absentStudentId: id, context: studentContext });
+      });
+    });
+    azubiEntries.forEach((entry, i) => {
+      vacancies.push({ entry, slot: azubiSlots[i], absentStudentId: entry.azubiId, context: azubiContext });
+    });
+
+    const absentOnDate = buildAbsentOnDate(state);
+    const isExcluded = (id, vacancy) => isBlocked(vacancy.entry, id) || (absentOnDate.get(vacancy.entry.date) || new Set()).has(id);
+    return resolveVacancies(vacancies, new Set(), isExcluded).map((p) => ({
+      entryId: p.entryId,
+      absentStudentId: p.absentStudentId,
+      isAzubiSeat: p.isAzubiSeat,
+      replacementStudentId: p.chosen ? p.chosen.studentId : null,
+      reasonText: p.chosen ? p.chosen.reasons.join(', ') : (p.noCandidateReason || 'Kein geeigneter Ersatz gefunden'),
     }));
   }
 
@@ -448,6 +511,7 @@ SSD.SubstitutionService = (function () {
     getAffectedEntries,
     proposeSubstitutions,
     proposeAutoReplacements,
+    proposeForConflicts,
     validateBatch,
     applySubstitutions,
     studentName,
