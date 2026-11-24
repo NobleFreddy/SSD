@@ -454,11 +454,64 @@ SSD.Views.AdminSettings = (function () {
     return select;
   }
 
+  /** Erinnerungen an Veranstaltungen — erzeugt und versendet der Server (SSD.EventReminderService). */
+  function buildEventReminderSection(teams, saveTeams) {
+    const R = SSD.EventReminderService;
+    const cfg = R.config();
+    const save = (patch, quiet) => saveTeams({ eventReminders: Object.assign({}, cfg, patch) }, quiet);
+
+    const dayChips = (key, label) => U.el('div', { class: 'cluster gap-2', role: 'group', 'aria-label': label }, R.DAY_OPTIONS.map((o) => {
+      const box = U.el('input', { type: 'checkbox' });
+      box.checked = cfg[key].includes(o.days);
+      box.addEventListener('change', () => save({ [key]: box.checked ? cfg[key].concat(o.days) : cfg[key].filter((d) => d !== o.days) }, true));
+      return U.el('label', { class: 'check-chip' }, [box, U.el('span', {}, [o.label])]);
+    }));
+    const group = (label, chips, hint) => U.el('div', { class: 'field' }, [
+      U.el('div', { class: 'field__label' }, [label]), chips, U.el('div', { class: 'field__hint' }, [hint]),
+    ]);
+
+    const timeSelect = U.el('select', { class: 'select', style: 'max-width:160px;' }, R.timeOptions(cfg.time).map((t) => U.el('option', { value: t, selected: t === cfg.time }, [`${t} Uhr`])));
+    timeSelect.addEventListener('change', () => save({ time: timeSelect.value }, true));
+
+    const children = [
+      switchRow('An Veranstaltungen erinnern', 'Erinnert im Teams-Kanal an kommende Veranstaltungen und daran, dass noch Plätze frei sind. Genannt werden Titel, Zeit, Ort und die Anzahl der Anmeldungen, keine Namen.', cfg.enabled, (val) => save({ enabled: val })),
+    ];
+    if (cfg.enabled) {
+      children.push(
+        group('Erinnerung an die Veranstaltung', dayChips('days', 'Erinnerung an die Veranstaltung'), 'Kommt immer. Sind noch Plätze frei, steht das dabei.'),
+        group('Zusätzlich, solange noch nicht alle angemeldet sind', dayChips('openDays', 'Zusätzliche Erinnerung bei freien Plätzen'), 'Entfällt, sobald alle Plätze belegt sind.'),
+        field('Uhrzeit', timeSelect, 'Die Nachricht erscheint etwa 5 Minuten später.')
+      );
+      children.push(U.el('div', { class: 'field' }, [
+        U.el('div', { class: 'field__label' }, ['Nächste Erinnerungen']),
+        buildNextReminders(teams),
+      ]));
+    }
+    return U.el('div', { class: 'stack gap-3' }, children);
+  }
+
+  function buildNextReminders(teams) {
+    const R = SSD.EventReminderService;
+    const note = (text) => U.el('div', { class: 'field__hint' }, [text]);
+    if (!teams.enabled) return note('Erinnerungen werden erst gesendet, wenn oben „Benachrichtigungen aktiv“ eingeschaltet ist.');
+    const all = R.upcoming();
+    if (!all.length) return note('Zurzeit steht keine Erinnerung an.');
+    const shown = all.slice(0, 5);
+    return U.el('div', { class: 'stack gap-1' }, [
+      ...shown.map((r) => U.el('div', { class: 'reminder-row' }, [
+        U.el('span', { class: 'reminder-row__when' }, [R.whenLabel(r)]),
+        U.el('span', { class: 'reminder-row__what' }, [r.event.title]),
+        U.el('span', { class: `badge ${r.kind === 'open' ? 'badge--warning' : 'badge--primary'}` }, [r.kind === 'open' ? 'Noch Plätze frei' : 'Erinnerung']),
+      ])),
+      note(`${all.length > shown.length ? `… und ${all.length - shown.length} weitere. ` : ''}Nach jetzigem Anmeldestand.`),
+    ]);
+  }
+
   function buildTeamsCard() {
     const teams = Object.assign(SSD.Models.createDefaultTeamsSettings(), SSD.SettingsService.get().teams || {});
-    function saveTeams(patch) {
+    function saveTeams(patch, quiet) {
       SSD.SettingsService.update({ teams: Object.assign({}, teams, patch) });
-      SSD.Toast.success('Gespeichert', 'Teams-Einstellung aktualisiert.');
+      if (!quiet) SSD.Toast.success('Gespeichert', 'Teams-Einstellung aktualisiert.');
     }
 
     const statusEl = U.el('div', { class: 'stack gap-1' }, [U.el('span', { class: 'text-tertiary', style: 'font-size:var(--font-size-sm);' }, ['Status wird geladen …'])]);
@@ -485,6 +538,9 @@ SSD.Views.AdminSettings = (function () {
         U.el('div', { class: 'field__label' }, ['Was soll gemeldet werden?']),
         U.el('div', {}, SSD.NotificationService.CATEGORIES.map((c) => switchRow(c.label, c.hint, teams.categories[c.key] !== false,
           (val) => saveTeams({ categories: Object.assign({}, teams.categories, { [c.key]: val }) })))),
+        U.el('hr', { class: 'divider' }),
+        buildEventReminderSection(teams, saveTeams),
+        U.el('hr', { class: 'divider' }),
         U.el('div', { class: 'cluster gap-2' }, [testBtn]),
         U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, [
           'Hinweis: In den Nachrichten stehen Namen und Dienstzeiten — bitte einen Kanal wählen, den nur das Sanitätsdienst-Team und die Verantwortlichen sehen.',

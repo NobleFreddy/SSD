@@ -247,6 +247,7 @@ SSD.Storage = (function () {
     const storedTeams = storedSettings.teams || {};
     data.settings.teams = Object.assign({}, defaults.settings.teams, storedTeams, {
       categories: Object.assign({}, defaults.settings.teams.categories, storedTeams.categories || {}),
+      eventReminders: Object.assign({}, defaults.settings.teams.eventReminders, storedTeams.eventReminders || {}),
     });
     data.settings.privacy = Object.assign({}, defaults.settings.privacy, storedSettings.privacy || {});
     data.settings.retention = Object.assign({}, defaults.settings.retention, storedSettings.retention || {});

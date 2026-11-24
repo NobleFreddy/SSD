@@ -190,7 +190,18 @@ SSD.Models = (function () {
       enabled: false,
       nameStyle: 'short',
       categories: { schedule: true, substitution: true, meeting: true, event: true, task: true, material: true },
+      eventReminders: createDefaultEventReminderSettings(),
     };
+  }
+
+  /**
+   * Teams-Erinnerungen an Veranstaltungen (siehe SSD.EventReminderService).
+   * `days`: so viele Tage vorher wird immer erinnert; `openDays`: zusätzlich,
+   * solange noch nicht alle Plätze belegt sind. Die Standardwerte stehen auch in
+   * der Datenbankfunktion `ssd_private.event_reminder_items`.
+   */
+  function createDefaultEventReminderSettings() {
+    return { enabled: true, days: [7, 1], openDays: [14, 3], time: '16:00' };
   }
 
   /**
@@ -424,6 +435,7 @@ SSD.Models = (function () {
     createDefaultDutyBlockConfig,
     createDefaultWeights,
     createDefaultTeamsSettings,
+    createDefaultEventReminderSettings,
     createDefaultPrivacySettings,
     createDefaultRetentionSettings,
     createDefaultWeeklyUpdateSettings,

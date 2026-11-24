@@ -180,3 +180,18 @@ details.collapsible > summary:hover { color: var(--text-primary); }
 .exam-row:last-child { border-bottom: none; }
 .exam-row__icon { display: flex; color: var(--color-danger-500); }
 .exam-form { padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface-alt); }
+
+/* Teams-Erinnerungen an Veranstaltungen (Einstellungen) */
+.check-chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 5px 12px; border-radius: var(--radius-full);
+  background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+}
+.check-chip:has(input:checked) { background: var(--color-primary-soft); border-color: var(--color-primary-strong); color: var(--color-primary-strong); font-weight: 600; }
+.check-chip input { margin: 0; }
+.reminder-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 0; font-size: var(--font-size-sm); }
+.reminder-row + .reminder-row { border-top: 1px solid var(--border-subtle); }
+.reminder-row__when { color: var(--text-secondary); min-width: 150px; }
+.reminder-row__what { font-weight: 600; flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .reminder-row__what { order: 3; flex-basis: 100%; } }

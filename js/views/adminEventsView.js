@@ -219,6 +219,9 @@ SSD.Views.AdminEvents = (function () {
     const participantsBtn = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('students', { size: 14 }) }, ['Teilnehmer:innen']);
     participantsBtn.addEventListener('click', () => openParticipantsModal(event));
 
+    const R = SSD.EventReminderService;
+    const reminder = !isPast && R.isActive() ? R.nextFor(event) : null;
+
     return U.el('div', { class: `card animate-rise-in${isPast ? '' : ' card--interactive'}`, style: isPast ? 'opacity:0.65;' : '' }, [
       U.el('div', { class: 'card__header' }, [
         U.el('div', {}, [
@@ -233,6 +236,7 @@ SSD.Views.AdminEvents = (function () {
       U.el('div', { class: 'card__body stack gap-3' }, [
         event.description ? U.el('p', { style: 'margin:0;' }, [event.description]) : null,
         U.el('div', { class: 'cluster gap-3', style: 'justify-content:space-between;' }, [fillBadge, participantsBtn]),
+        reminder ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [`Nächste Teams-Erinnerung: ${R.whenLabel(reminder)}`]) : null,
       ]),
     ]);
   }

@@ -444,6 +444,22 @@ Treffen außerdem geänderte Zeit/Ort und Absagen — nachträglich erfasste
 Treffen und einzelne Zu-/Absagen nicht), Veranstaltungen, Aufgaben und
 Material.
 
+**Erinnerungen an Veranstaltungen** (*Einstellungen → Microsoft Teams → „An
+Veranstaltungen erinnern“*, standardmäßig an): Zur eingestellten Uhrzeit
+(Vorgabe 16 Uhr) erinnert Teams 7 Tage und 1 Tag vorher an eine Veranstaltung
+und nennt dabei, wie viele Plätze noch frei sind. Zusätzlich kommt 14 und 3
+Tage vorher eine Erinnerung, solange noch nicht alle Plätze belegt sind (ohne
+Teilnehmergrenze: solange noch nicht das ganze Team angemeldet ist). Tage und
+Uhrzeit sind einstellbar; die Einstellungen zeigen die nächsten Erinnerungen.
+Genannt werden Titel, Zeit, Ort und Anzahl der Anmeldungen, keine Namen.
+Erzeugt werden sie beim Versand von `ssd_private.event_reminder_items()`
+(Migration `20261124_ssd_event_reminders.sql`) direkt aus dem Datenstand — auch
+wenn niemand die App geöffnet hat und ohne den Datenstand zu ändern. Wird eine
+Veranstaltung gelöscht oder verlegt, entfällt die alte Erinnerung. Konnte Teams
+nicht erreicht werden, wird bis zu 24 Stunden lang nachgeholt. Die App-Seite
+([`js/modules/eventReminderService.js`](js/modules/eventReminderService.js))
+kennt dieselben Regeln nur für die Anzeige.
+
 **So funktioniert es:** Die App legt jede Meldung im selben Speichervorgang
 wie die eigentliche Änderung in `teamsOutbox` ab
 ([`js/modules/notificationService.js`](js/modules/notificationService.js)) —

@@ -109,7 +109,7 @@ SSD.Views.Privacy = (function () {
           'Supabase Inc. (USA) betreibt die Datenbank in einem Rechenzentrum in Frankfurt am Main.',
           'GitHub Inc. (USA) liefert die Webseite aus und speichert dabei aus Sicherheitsgründen die IP-Adressen der Aufrufe.',
           info.teamsEnabled
-            ? 'Microsoft Teams: Änderungen am Dienstplan, Vertretungen und Teamtreffen werden mit Vornamen und Initial (oder Namen) und Dienstzeiten in einen Teams-Kanal des Sanitätsdienstes gemeldet — nie mit Abwesenheitsgründen.'
+            ? 'Microsoft Teams: Änderungen am Dienstplan, Vertretungen und Teamtreffen werden mit Vornamen und Initial (oder Namen) und Dienstzeiten in einen Teams-Kanal des Sanitätsdienstes gemeldet — nie mit Abwesenheitsgründen. Erinnerungen an Veranstaltungen nennen nur Titel, Zeit, Ort und die Anzahl der Anmeldungen.'
             : null,
         ].filter(Boolean)),
         p('Für Übermittlungen in die USA gelten Standardvertragsklauseln der EU-Kommission bzw. das EU-US Data Privacy Framework. Eine Weitergabe an andere Stellen findet nicht statt.'),

@@ -642,7 +642,18 @@ export function createApp(initialData) {
         enabled: false,
         nameStyle: 'short',
         categories: { schedule: true, substitution: true, meeting: true, event: true, task: true, material: true },
+        eventReminders: createDefaultEventReminderSettings(),
       };
+    }
+
+    /**
+     * Teams-Erinnerungen an Veranstaltungen (siehe SSD.EventReminderService).
+     * `days`: so viele Tage vorher wird immer erinnert; `openDays`: zusätzlich,
+     * solange noch nicht alle Plätze belegt sind. Die Standardwerte stehen auch in
+     * der Datenbankfunktion `ssd_private.event_reminder_items`.
+     */
+    function createDefaultEventReminderSettings() {
+      return { enabled: true, days: [7, 1], openDays: [14, 3], time: '16:00' };
     }
 
     /**
@@ -876,6 +887,7 @@ export function createApp(initialData) {
       createDefaultDutyBlockConfig,
       createDefaultWeights,
       createDefaultTeamsSettings,
+      createDefaultEventReminderSettings,
       createDefaultPrivacySettings,
       createDefaultRetentionSettings,
       createDefaultWeeklyUpdateSettings,
@@ -1141,6 +1153,7 @@ export function createApp(initialData) {
       const storedTeams = storedSettings.teams || {};
       data.settings.teams = Object.assign({}, defaults.settings.teams, storedTeams, {
         categories: Object.assign({}, defaults.settings.teams.categories, storedTeams.categories || {}),
+        eventReminders: Object.assign({}, defaults.settings.teams.eventReminders, storedTeams.eventReminders || {}),
       });
       data.settings.privacy = Object.assign({}, defaults.settings.privacy, storedSettings.privacy || {});
       data.settings.retention = Object.assign({}, defaults.settings.retention, storedSettings.retention || {});
