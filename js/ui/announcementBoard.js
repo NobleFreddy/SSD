@@ -2,8 +2,8 @@
  * ============================================================================
  * SSD.AnnouncementBoard — Pinnwand (Anzeige + Bearbeitung)
  * ============================================================================
- * Eine Komponente für alle: Sanis/Azubis sehen die aktuellen Beiträge oben in
- * ihrem Dashboard, die Team-Koordination (Administrator, Sanisprecher:innen)
+ * Eine Komponente für alle: Sanis/Azubis sehen die aktuellen Beiträge auf
+ * ihrer Startseite (Reiter „Dienstplan“), die Team-Koordination (Administrator, Sanisprecher:innen)
  * sieht zusätzlich "Neuer Beitrag", Bearbeiten/Löschen (eigene bzw. als
  * Administrator alle) und die abgelaufenen Beiträge.
  */
@@ -52,7 +52,7 @@ SSD.AnnouncementBoard = (function () {
           U.el('label', { class: 'checkbox-row', style: 'margin-top:8px;' }, [importantInput, 'Wichtig — oben anheften']),
         ]),
       ]),
-      U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, ['Der Beitrag erscheint nach dem Anmelden oben im Dashboard aller aktiven Sanis und Azubis.']),
+      U.el('p', { class: 'text-tertiary', style: 'margin:0; font-size:var(--font-size-xs);' }, ['Der Beitrag erscheint auf der Startseite aller aktiven Sanis und Azubis, neben bzw. am Handy unter dem Dienstplan.']),
     ]);
 
     const footerButtons = [{ label: 'Abbrechen', variant: 'secondary' }];
@@ -162,7 +162,7 @@ SSD.AnnouncementBoard = (function () {
         U.el('span', { class: 'board__icon', html: SSD.Icons.svg('megaphone', { size: 18 }) }),
         U.el('div', {}, [
           U.el('div', { class: 'card__title' }, ['Pinnwand']),
-          coordinator ? U.el('div', { class: 'card__subtitle' }, ['Mitteilungen für alle Sanis und Azubis — erscheinen oben in deren Dashboard.']) : null,
+          coordinator ? U.el('div', { class: 'card__subtitle' }, ['Mitteilungen für alle Sanis und Azubis — erscheinen auf deren Startseite.']) : null,
         ]),
       ]),
       addBtn,

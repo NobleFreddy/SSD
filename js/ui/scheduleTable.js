@@ -32,7 +32,8 @@ SSD.ScheduleTable = (function () {
     const table = U.el('table', { class: 'schedule-table' });
     const interactive = typeof options.onCellClick === 'function';
 
-    const headRow = U.el('tr', {}, [U.el('th', {})].concat(dates.map((d, i) => U.el('th', {}, [
+    const todayIso = U.toIsoDate(U.today());
+    const headRow = U.el('tr', {}, [U.el('th', {})].concat(dates.map((d, i) => U.el('th', { class: U.toIsoDate(d) === todayIso ? 'is-today' : '' }, [
       U.WEEKDAY_LABELS[U.WEEKDAY_KEYS[i]],
       U.el('span', { class: 'date' }, [U.formatDateMedium(d)]),
     ]))));

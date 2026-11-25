@@ -8,10 +8,13 @@
  * Passwörter prüft ausschließlich der Server (Datenbankfunktion `ssd_login`,
  * bcrypt). Sie verlassen die Datenbank nie und stehen auch nicht im
  * Datenbestand. Der Browser erhält nach erfolgreicher Anmeldung nur ein
- * zufälliges Sitzungs-Token (sessionStorage — endet mit dem Schließen des
- * Tabs, serverseitig spätestens nach 12 Stunden). Rechte wie
- * `canCoordinate()` steuern hier nur die Oberfläche; was jemand tatsächlich
- * lesen und speichern darf, entscheidet der Server anhand des Tokens.
+ * zufälliges Sitzungs-Token. Normalerweise liegt es im sessionStorage (endet
+ * mit dem Schließen des Tabs, serverseitig spätestens nach 12 Stunden). Wer bei
+ * der Anmeldung „Auf diesem Gerät angemeldet bleiben“ wählt (nur Sanis und
+ * Azubis), behält es im localStorage — bis zum Abmelden, sonst 60 Tage nach der
+ * letzten Nutzung. Rechte wie `canCoordinate()` steuern hier nur die Oberfläche;
+ * was jemand tatsächlich lesen und speichern darf, entscheidet der Server
+ * anhand des Tokens.
  */
 window.SSD = window.SSD || {};
 
@@ -20,24 +23,62 @@ SSD.Auth = (function () {
 
   const SESSION_KEY = 'ssd_session_v1';
   const PASSWORD_MIN_LENGTH = 10;
+  const RENEW_INTERVAL_MS = 12 * 3600 * 1000;
 
   /* ---------------------------------------------------------------------
-   * Sitzung (sessionStorage — endet, wenn der Browser-Tab geschlossen wird)
+   * Sitzung dieses Tabs
+   * ---------------------------------------------------------------------
+   * Beim Start einmal aus dem Browser-Speicher gelesen und dann im Speicher
+   * des Tabs gehalten: Meldet sich in einem anderen Tab jemand anderes an,
+   * darf dieser Tab seine Daten nie mit dessen Token speichern.
    * ------------------------------------------------------------------- */
 
-  /** { role, studentId, token, mustChangePassword?, weakPassword? } — Sitzungen ohne Token stammen aus alten Versionen und gelten nicht. */
-  function getSession() {
+  let current = null;
+  let restored = false;
+
+  /** 'session' = bis zum Schließen des Tabs, 'local' = „Angemeldet bleiben“. */
+  function browserStorage(kind) {
+    try { return kind === 'local' ? window.localStorage : window.sessionStorage; } catch (err) { return null; }
+  }
+
+  /** Sitzungen ohne Token stammen aus alten Versionen und gelten nicht. */
+  function readStored(kind) {
     try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
+      const raw = browserStorage(kind).getItem(SESSION_KEY);
       const session = raw ? JSON.parse(raw) : null;
-      return session && session.token ? session : null;
+      return session && session.token && (kind === 'session' || session.remembered) ? session : null;
     } catch (err) {
       return null;
     }
   }
 
+  function writeStored(kind, session) {
+    try {
+      browserStorage(kind).setItem(SESSION_KEY, JSON.stringify(session));
+      return true;
+    } catch (err) {
+      return false; // z. B. Speicher gesperrt — die Sitzung gilt dann nur in diesem Tab
+    }
+  }
+
+  function removeStored(kind) {
+    try { browserStorage(kind).removeItem(SESSION_KEY); } catch (err) { /* ignore */ }
+  }
+
+  /** { role, studentId, token, mustChangePassword?, weakPassword?, remembered?, renewedAt? } */
+  function getSession() {
+    if (!restored) {
+      restored = true;
+      current = readStored('session') || readStored('local');
+    }
+    return current ? Object.assign({}, current) : null;
+  }
+
   function storeSession(session) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    restored = true;
+    current = Object.assign({}, session);
+    if (session.remembered && writeStored('local', session)) removeStored('session');
+    else writeStored('session', session);
   }
 
   function getToken() {
@@ -47,8 +88,98 @@ SSD.Auth = (function () {
 
   /** Verwirft die Sitzung still (ohne 'auth:changed') — für den Router und den App-Start. */
   function clearSession() {
-    try { sessionStorage.removeItem(SESSION_KEY); } catch (err) { /* ignore */ }
+    const token = getToken();
+    current = null;
+    removeStored('session');
+    // Eine dauerhafte Anmeldung nur entfernen, wenn es die eigene ist (nicht die aus einem anderen Tab).
+    const stored = readStored('local');
+    if (!stored || stored.token === token) removeStored('local');
   }
+
+  /* ---------------------------------------------------------------------
+   * „Auf diesem Gerät angemeldet bleiben“
+   * ------------------------------------------------------------------- */
+
+  /** Grobe Gerätebezeichnung für „Mein Konto“, z. B. „iPhone · Safari“. */
+  function deviceLabel() {
+    const nav = window.navigator || {};
+    const ua = String(nav.userAgent || '');
+    const first = (pairs) => { const hit = pairs.find(([re]) => re.test(ua)); return hit ? hit[1] : ''; };
+    const isIpadAsMac = /Macintosh/.test(ua) && nav.maxTouchPoints > 1; // iPads melden sich als Mac
+    const device = isIpadAsMac ? 'iPad' : first([
+      [/iPhone|iPod/, 'iPhone'], [/iPad/, 'iPad'], [/Android.*Mobile/, 'Android-Handy'], [/Android/, 'Android-Tablet'],
+      [/Windows/, 'Windows-PC'], [/Macintosh/, 'Mac'], [/CrOS/, 'Chromebook'], [/Linux/, 'Linux-PC'],
+    ]) || 'Gerät';
+    const browser = first([
+      [/Edg(e|A|iOS)?\//, 'Edge'], [/OPR\/|Opera/, 'Opera'], [/SamsungBrowser\//, 'Samsung Internet'],
+      [/Firefox\/|FxiOS\//, 'Firefox'], [/Chrome\/|CriOS\//, 'Chrome'], [/Safari\//, 'Safari'],
+    ]);
+    return browser ? `${device} · ${browser}` : device;
+  }
+
+  function canStoreLocally() {
+    const storage = browserStorage('local');
+    if (!storage) return false;
+    try {
+      storage.setItem(`${SESSION_KEY}_test`, '1');
+      storage.removeItem(`${SESSION_KEY}_test`);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** Macht die eben begonnene Sitzung dauerhaft. Scheitert das, bleibt es bei einer normalen Anmeldung. */
+  async function rememberSession() {
+    const session = getSession();
+    if (!session || session.role === 'admin' || !canStoreLocally()) return false;
+    try {
+      const res = await SSD.Storage.call('ssd_remember', { p_token: session.token, p_device: deviceLabel() });
+      if (!res || !res.ok || getToken() !== session.token) return false;
+      storeSession(Object.assign(getSession(), { remembered: true, renewedAt: Date.now() }));
+      return true;
+    } catch (err) {
+      return false; // z. B. Datenbank noch ohne diese Funktion
+    }
+  }
+
+  /** Verlängert eine dauerhafte Anmeldung — höchstens alle 12 Stunden, beim Öffnen der App. */
+  async function renewIfDue() {
+    const session = getSession();
+    if (!session || !session.remembered) return;
+    if (Math.abs(Date.now() - (session.renewedAt || 0)) < RENEW_INTERVAL_MS) return;
+    try {
+      const res = await SSD.Storage.call('ssd_renew', { p_token: session.token });
+      if (res && res.ok && getToken() === session.token) storeSession(Object.assign(getSession(), { renewedAt: Date.now() }));
+    } catch (err) { /* offline — beim nächsten Öffnen */ }
+  }
+
+  /** Eigene Anmeldungen (Geräte) für „Mein Konto“. */
+  async function listSessions() {
+    const res = await SSD.Storage.call('ssd_sessions', { p_token: getToken() });
+    if (!res || !res.ok) throw new Error(errorText(res));
+    return res.sessions || [];
+  }
+
+  /** Meldet ein anderes Gerät bzw. (ohne ID) alle anderen Geräte ab. */
+  async function endOtherSessions(sessionId) {
+    const res = await SSD.Storage.call('ssd_end_sessions', sessionId ? { p_token: getToken(), p_session: sessionId } : { p_token: getToken() });
+    if (!res || !res.ok) throw new Error(errorText(res));
+    return res.ended || 0;
+  }
+
+  // Dauerhafte Anmeldungen teilen sich alle Tabs: Wird sie in einem anderen Tab beendet (oder
+  // meldet sich dort jemand anderes dauerhaft an), verschwinden die Daten auch aus diesem Tab.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== SESSION_KEY && e.key !== null) return;
+    if (!current || !current.remembered) return;
+    const stored = readStored('local');
+    if (stored && stored.token === current.token) { current = stored; return; } // z. B. Passwort-Hinweis erledigt
+    current = null;
+    SSD.Store.clear();
+    SSD.EventBus.emit('auth:ended-elsewhere', {});
+    SSD.EventBus.emit('auth:changed', null);
+  });
 
   /** Abmelden: Sitzung beim Server beenden und alle Daten aus diesem Tab entfernen. */
   async function logout() {
@@ -73,8 +204,10 @@ SSD.Auth = (function () {
   /**
    * Speichert die vom Server erhaltene Sitzung, lädt die erlaubten Daten und
    * meldet danach die Anmeldung (Router wechselt die Seite).
+   * @param {{remember?: boolean}} [opts]
+   * @returns {Promise<{remembered: boolean}>}
    */
-  async function startSession(res) {
+  async function startSession(res, opts) {
     storeSession({
       role: res.role,
       studentId: res.personId || null,
@@ -82,14 +215,17 @@ SSD.Auth = (function () {
       mustChangePassword: !!res.mustChangePassword,
       weakPassword: !!res.weakPassword,
     });
+    let remembered = false;
     try {
-      await SSD.Store.load();
+      [remembered] = await Promise.all([opts && opts.remember ? rememberSession() : false, SSD.Store.load()]);
     } catch (err) {
+      SSD.Storage.call('ssd_logout', { p_token: res.token }).catch(() => { /* offline — läuft serverseitig ab */ });
       clearSession();
       SSD.Store.clear();
       throw err;
     }
     SSD.EventBus.emit('auth:changed', getSession());
+    return { remembered };
   }
 
   /** Markiert die Passwort-Hinweise als erledigt (nach einem erfolgreichen Passwortwechsel). */
@@ -216,9 +352,10 @@ SSD.Auth = (function () {
 
   /**
    * @param {'admin'|'student'} kind
-   * @returns {Promise<{ok: boolean, error?: string}>}
+   * @param {{remember?: boolean}} [opts] - „Auf diesem Gerät angemeldet bleiben“ (nie für den Administrator)
+   * @returns {Promise<{ok: boolean, remembered?: boolean, error?: string}>}
    */
-  async function login(kind, username, password) {
+  async function login(kind, username, password, opts) {
     let res;
     try {
       res = await SSD.Storage.call('ssd_login', { p_role: kind === 'admin' ? 'admin' : 'student', p_username: username, p_password: password });
@@ -227,11 +364,11 @@ SSD.Auth = (function () {
     }
     if (!res || !res.ok) return { ok: false, error: errorText(res) };
     try {
-      await startSession(res);
+      const { remembered } = await startSession(res, { remember: !!(opts && opts.remember) && res.role !== 'admin' });
+      return { ok: true, remembered };
     } catch (err) {
       return { ok: false, error: 'Die Daten konnten nicht geladen werden. Bitte erneut versuchen.' };
     }
-    return { ok: true };
   }
 
   /**
@@ -302,6 +439,7 @@ SSD.Auth = (function () {
   return {
     PASSWORD_MIN_LENGTH,
     getSession, getToken, clearSession, logout, getCurrentStudent, clearPasswordFlags,
+    deviceLabel, renewIfDue, listSessions, endOtherSessions,
     isAdminSession, canCoordinate, currentPersonId, canManageItem,
     completeSetup, login, register,
     setPassword, changeAdminCredentials, resetAllData, isUsernameTaken,

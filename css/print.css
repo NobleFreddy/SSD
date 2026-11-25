@@ -12,7 +12,7 @@
   html, body { background: #fff !important; }
 
   .sidebar, .topbar, .mobile-overlay, .toast-region, .modal-overlay,
-  .solver-overlay, .no-print, .filter-bar, .tabs, .command-palette,
+  .solver-overlay, .no-print, .filter-bar, .tabs, .command-palette, .plan-chips, .plan-day, .plan-card__nav .btn,
   .app-shell > .sidebar, .page-header__actions {
     display: none !important;
   }

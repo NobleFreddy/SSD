@@ -198,11 +198,23 @@ gesucht — der Rest des Plans bleibt unangetastet.
   stattdessen die betroffene Woche vollständig neu berechnen zu lassen — das
   bleibt aber immer eine explizite, separate Aktion.
 
+### Startseite der Sanis: zuerst der Plan
+
+Nach dem Öffnen steht der Reiter **„Dienstplan“** vorn: am PC der heutige Tag
+und die Wochentabelle, am Handy ein Tag als Liste mit fünf Tasten für Montag
+bis Freitag (ein Punkt markiert Tage mit eigenem Dienst). An Wochenenden und
+freien Tagen erscheint der nächste Diensttag. Daneben bzw. darunter folgen die
+eigenen nächsten Dienste, eine etwaige Verfügbarkeits-Erinnerung und die
+Pinnwand. Änderungen anderer erscheinen sofort; blieb die App über Nacht
+offen, springt sie beim Zurückkehren auf den heutigen Tag. Wer noch keine
+Verfügbarkeit eingetragen hat und keinen Dienst hat, beginnt bei „Meine
+Verfügbarkeit“.
+
 ### Selbst abmelden („Ich falle aus“) mit automatischer Vertretung
 
-Wer z. B. morgens krank ist, meldet das direkt im eigenen Dashboard: Ganz
-oben steht die Karte **„Meine nächsten Dienste“** (Heute/Morgen farbig
-markiert) mit **„Vertretung anfordern“** je Dienst sowie **„Ich falle aus …“**
+Wer z. B. morgens krank ist, meldet das direkt auf der eigenen Startseite
+(Reiter „Dienstplan“): Neben dem Plan, am Handy darunter, steht die Karte
+**„Meine nächsten Dienste“** (Heute/Morgen farbig markiert) mit **„Vertretung anfordern“** je Dienst sowie **„Ich falle aus …“**
 für mehrere Tage (Zeitraum wählen, alle betroffenen Dienste sind
 vorausgewählt, ein Speichervorgang). Ein Grund wird bewusst nicht abgefragt
 (Gesundheitsdaten).
@@ -319,9 +331,10 @@ Datenbank kennt sie nur über [`js/core/storage.js`](js/core/storage.js).
 - **Alle Geräte sehen dieselben Daten:** Nach jeder Änderung verschickt die
   Datenbank per Supabase Realtime (Broadcast) nur die neue Versionsnummer —
   keine Daten. Geöffnete Sitzungen laden daraufhin über `ssd_load` nach;
-  zusätzlich fragen sie jede Minute die Version ab, falls die
-  Live-Verbindung ausfällt. Im Browser selbst wird nichts gespeichert außer
-  der Anmeldung (sessionStorage) und der Hell/Dunkel-Einstellung.
+  zusätzlich fragen sie jede Minute und beim Zurückkehren in die App die
+  Version ab, falls die Live-Verbindung ausfällt. Im Browser selbst wird
+  nichts gespeichert außer der Anmeldung (sessionStorage, mit „Angemeldet
+  bleiben“ localStorage) und der Hell/Dunkel-Einstellung.
 - **Nebenläufigkeit:** Speichern nutzt eine optimistische Versionsprüfung
   (Spalte `version`) — speichert eine Person, während eine andere
   zwischenzeitlich bereits gespeichert hat, wird die fremde Änderung nicht
@@ -387,7 +400,7 @@ Sanisprecher:innen in ihrem Dashboard.
 
 | Funktion | Was sie tut | Administrator | Sanisprecher:innen |
 |---|---|---|---|
-| **Pinnwand** | Mitteilungen oben im Dashboard aller Sanis/Azubis; „wichtig“ heftet oben an, „sichtbar bis“ blendet automatisch aus | alle Beiträge | anlegen, eigene bearbeiten/löschen |
+| **Pinnwand** | Mitteilungen auf der Startseite aller Sanis/Azubis; „wichtig“ heftet oben an, „sichtbar bis“ blendet automatisch aus | alle Beiträge | anlegen, eigene bearbeiten/löschen |
 | **Teamtreffen** | Treffen ansetzen, alle aktiven Sanis/Azubis sagen zu oder ab, danach Anwesenheit erfassen | alle Treffen | anlegen, eigene bearbeiten; Anwesenheit bei allen |
 | **Aufgaben anlegen** | offener Aufgaben-Pool (wie bisher), jetzt auch von der Team-Leitung befüllbar | alle Aufgaben | anlegen, eigene bearbeiten/löschen |
 | **Lücken auffüllen** | besetzt unbesetzte Dienste ab heute per Algorithmus, ohne den übrigen Plan zu ändern | Dienstplan-Ansicht | Team-Verwaltung → Überblick |
@@ -510,6 +523,16 @@ die Nutzung von Teams mit der Schule abstimmen.
   (sessionStorage, endet mit dem Tab; serverseitig nach 12 Stunden). Von
   Startpasswörtern, die der Administrator vergeben hat, verlangt die App
   nach der Anmeldung einen Wechsel.
+- **„Auf diesem Gerät angemeldet bleiben“** (freiwillig, nur Sanis und Azubis,
+  nie der Administrator; Migration `20261125_ssd_stay_signed_in.sql`): Das
+  Token liegt dann im localStorage. Die Anmeldung endet 60 Tage nach der
+  letzten Nutzung (die App verlängert sie beim Öffnen über `ssd_renew`),
+  spätestens nach einem Jahr. `ssd_remember` geht nur in den ersten 15
+  Minuten nach der Passworteingabe; höchstens 10 Geräte pro Person. Unter
+  *Mein Konto → Angemeldete Geräte* (`ssd_sessions`, `ssd_end_sessions`)
+  lassen sich einzelne oder alle anderen Geräte abmelden. Ein neues Passwort
+  beendet alle anderen Anmeldungen. Fehlen die Funktionen in der Datenbank,
+  bleibt es bei einer normalen Anmeldung.
 - Nach 8 Fehlversuchen in 15 Minuten ist ein Benutzername gesperrt; falsche
   Schulcodes sind ebenfalls begrenzt, Registrierungen auf 30 pro Stunde.
 - Die Tabelle `ssd_dienstplan_state` ist für den öffentlichen Schlüssel

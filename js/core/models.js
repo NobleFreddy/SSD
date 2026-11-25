@@ -330,7 +330,7 @@ SSD.Models = (function () {
 
   /**
    * Beitrag auf der Pinnwand: kurze Mitteilung, die alle Sanis/Azubis nach
-   * dem Anmelden oben im Dashboard sehen (siehe `SSD.AnnouncementsService`).
+   * dem Anmelden auf ihrer Startseite sehen (siehe `SSD.AnnouncementsService`).
    */
   function createAnnouncement(overrides = {}) {
     const now = new Date().toISOString();

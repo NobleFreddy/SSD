@@ -103,12 +103,14 @@ SSD.Router = (function () {
     }
     SSD.Tooltip.hide();
 
+    const pathChanged = currentPath !== path;
     rootEl.innerHTML = '';
     currentPath = path;
     currentView = route.view;
     route.view.render(rootEl, params);
     SSD.EventBus.emit('router:navigated', { path, params });
     rootEl.scrollTop = 0;
+    if (pathChanged) window.scrollTo(0, 0);
   }
 
   function start(container) {

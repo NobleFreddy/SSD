@@ -7,8 +7,9 @@
  * oder es kürzer als die Mindestlänge ist.
  *
  * AccountDialog ("Mein Konto" im Schülerbereich): Passwort ändern, die
- * eigenen Engagement-Zahlen und eine Kopie aller eigenen Daten zum
- * Herunterladen (Auskunft/Datenübertragbarkeit, Art. 15 und 20 DSGVO).
+ * eigenen Engagement-Zahlen, die angemeldeten Geräte (zum Abmelden z. B. eines
+ * verlorenen Handys) und eine Kopie aller eigenen Daten zum Herunterladen
+ * (Auskunft/Datenübertragbarkeit, Art. 15 und 20 DSGVO).
  */
 window.SSD = window.SSD || {};
 
@@ -139,6 +140,100 @@ SSD.AccountDialog = (function () {
     return { range, row };
   }
 
+  /** „heute, 14:05“ / „gestern, 08:12“ / „21.11., 16:30“ */
+  function whenLabel(iso) {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return 'unbekannt';
+    const day = U.toIsoDate(date);
+    const label = day === U.toIsoDate(U.today()) ? 'heute'
+      : day === U.toIsoDate(U.addDays(U.today(), -1)) ? 'gestern' : U.formatDateShort(date);
+    return `${label}, ${date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  function sessionDetail(s) {
+    if (s.remembered) return `zuletzt genutzt: ${whenLabel(s.lastUsedAt)} · bleibt angemeldet bis ${U.formatDateMedium(new Date(s.expiresAt))}, jede Nutzung verlängert das`;
+    return `angemeldet: ${whenLabel(s.createdAt)} · endet spätestens nach 12 Stunden`;
+  }
+
+  /** Abschnitt „Angemeldete Geräte“ — wird beim Öffnen vom Server geladen. */
+  function buildSessionsSection() {
+    const box = U.el('div', { class: 'stack gap-2', 'aria-live': 'polite' }, [U.el('p', { class: 'text-tertiary', style: 'margin:0;' }, ['Wird geladen …'])]);
+
+    async function run(action) {
+      try {
+        const ended = await action();
+        SSD.Toast.success('Abgemeldet', ended === 1 ? '1 Anmeldung wurde beendet.' : `${ended} Anmeldungen wurden beendet.`);
+      } catch (err) {
+        SSD.Toast.error('Nicht möglich', String(err.message || err));
+      }
+      load();
+    }
+
+    function row(title, detail, isCurrent, onEnd) {
+      const endBtn = onEnd ? U.el('button', { class: 'btn btn--ghost btn--sm', html: SSD.Icons.svg('logout', { size: 14 }) }, ['Abmelden']) : null;
+      if (endBtn) endBtn.addEventListener('click', () => { endBtn.disabled = true; run(onEnd); });
+      return U.el('div', { class: 'member-row' }, [
+        U.el('div', { class: 'session-row__main' }, [
+          U.el('div', { class: 'cluster gap-2' }, [
+            U.el('strong', {}, [title]),
+            isCurrent ? U.el('span', { class: 'badge badge--primary' }, ['dieses Gerät']) : null,
+          ]),
+          U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [detail]),
+        ]),
+        endBtn,
+      ]);
+    }
+
+    /** Dauerhafte Anmeldungen einzeln; kurze (enden von selbst) zusammengefasst. */
+    function rows(sessions) {
+      const list = sessions.filter((s) => s.current || s.remembered).map((s) => row(
+        s.device || 'Angemeldet bis zum Schließen der Seite', sessionDetail(s), s.current,
+        s.current ? null : () => SSD.Auth.endOtherSessions(s.id),
+      ));
+      const short = sessions.filter((s) => !s.current && !s.remembered);
+      if (short.length) {
+        list.push(row(
+          short.length === 1 ? '1 kurze Anmeldung' : `${short.length} kurze Anmeldungen`,
+          `ohne „Angemeldet bleiben“, zuletzt ${whenLabel(short[0].createdAt)} · endet spätestens nach 12 Stunden`, false,
+          async () => {
+            let ended = 0;
+            for (const s of short) ended += await SSD.Auth.endOtherSessions(s.id);
+            return ended;
+          },
+        ));
+      }
+      return list;
+    }
+
+    async function load() {
+      let sessions;
+      try {
+        sessions = await SSD.Auth.listSessions();
+      } catch (err) {
+        box.replaceChildren(U.el('p', { class: 'text-tertiary', style: 'margin:0;' }, ['Die Liste konnte gerade nicht geladen werden.']));
+        return;
+      }
+      const others = sessions.filter((s) => !s.current);
+      const children = [U.el('div', {}, rows(sessions))];
+      if (others.length > 1) {
+        const allBtn = U.el('button', { class: 'btn btn--secondary btn--sm' }, ['Alle anderen Geräte abmelden']);
+        allBtn.addEventListener('click', async () => {
+          const ok = await SSD.Dialog.confirm({ title: 'Andere Geräte abmelden', message: `${others.length} andere Anmeldungen beenden? Auf diesem Gerät bleiben Sie angemeldet.`, confirmLabel: 'Abmelden' });
+          if (ok) run(() => SSD.Auth.endOtherSessions());
+        });
+        children.push(U.el('div', {}, [allBtn]));
+      }
+      box.replaceChildren(...children);
+    }
+    load();
+
+    return U.el('div', {}, [
+      U.el('div', { class: 'section-label' }, ['Angemeldete Geräte']),
+      U.el('p', { style: 'margin:0 0 6px;' }, ['Hier sehen Sie, wo Sie angemeldet sind. Handy verloren oder an einem fremden Gerät angemeldet geblieben? Dann hier abmelden und das Passwort ändern.']),
+      box,
+    ]);
+  }
+
   function stat(label, value) {
     return U.el('div', { class: 'stat-tile' }, [U.el('div', { class: 'stat-tile__value' }, [String(value)]), U.el('div', { class: 'stat-tile__label' }, [label])]);
   }
@@ -152,8 +247,13 @@ SSD.AccountDialog = (function () {
     passwordBtn.addEventListener('click', () => { handle.close(); setTimeout(() => SSD.PasswordDialog.show(), 160); });
 
     const downloadBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('download', { size: 15 }) }, ['Meine Daten herunterladen']);
-    downloadBtn.addEventListener('click', () => {
+    downloadBtn.addEventListener('click', async () => {
       const data = collectOwnData(student);
+      try {
+        data.anmeldungen = (await SSD.Auth.listSessions()).map((s) => ({
+          geraet: s.device, dauerhaft: s.remembered, angemeldetAm: s.createdAt, zuletztGenutzt: s.lastUsedAt, gueltigBis: s.expiresAt,
+        }));
+      } catch (err) { /* ohne Verbindung: Kopie ohne die Geräteliste */ }
       U.downloadBlob(`meine_daten_${U.toIsoDate(U.today())}.json`, JSON.stringify(data, null, 2), 'application/json');
     });
 
@@ -172,6 +272,7 @@ SSD.AccountDialog = (function () {
         ]),
         U.el('p', { class: 'text-tertiary', style: 'margin:8px 0 0; font-size:var(--font-size-xs);' }, ['So zählt auch die Engagement-Übersicht der Team-Koordination. Fehlt etwas oder stimmt etwas nicht, bitte bei der Administration melden.']),
       ]),
+      buildSessionsSection(),
       U.el('div', {}, [
         U.el('div', { class: 'section-label' }, ['Meine Daten']),
         U.el('p', { style: 'margin:0 0 10px;' }, ['Laden Sie eine Kopie aller Daten herunter, die zu Ihrer Person gespeichert sind (JSON-Datei). Für Berichtigung oder Löschung wenden Sie sich an die Administration.']),

@@ -195,3 +195,69 @@ details.collapsible > summary:hover { color: var(--text-primary); }
 .reminder-row__when { color: var(--text-secondary); min-width: 150px; }
 .reminder-row__what { font-weight: 600; flex: 1; min-width: 120px; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .reminder-row__what { order: 3; flex-basis: 100%; } }
+
+/* ---- Anmeldung: „Auf diesem Gerät angemeldet bleiben“ ------------------------ */
+.remember-row { align-items: flex-start; margin-bottom: var(--space-4); font-size: var(--font-size-sm); font-weight: 600; }
+.remember-row input { flex: none; margin-top: 1px; }
+.remember-row__hint { display: block; margin-top: 2px; font-size: var(--font-size-xs); font-weight: 500; color: var(--text-secondary); }
+.session-row__main { min-width: 0; flex: 1 1 220px; overflow-wrap: anywhere; }
+
+/* ---- Startseite der Sanis: Dienstplan zuerst --------------------------------- */
+.topbar__role { margin-left: 8px; vertical-align: middle; }
+@media (max-width: 560px) { .topbar__role { display: none; } }
+.start-layout { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(300px, 1fr); gap: var(--space-5); align-items: start; }
+@media (max-width: 1180px) { .start-layout { grid-template-columns: minmax(0, 1fr); } }
+.start-layout > .stack .card__header { flex-wrap: wrap; }
+.plan-card__header { align-items: center; }
+.plan-card__nav { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); white-space: nowrap; }
+.plan-card__back.is-hidden { visibility: hidden; }
+.plan-card__range { font-weight: 500; color: var(--text-secondary); }
+
+.plan-chips { display: none; }
+.plan-day { margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--bg-surface-alt); border: 1px solid var(--border-subtle); }
+.plan-day:not(.is-focus) { display: none; }
+.plan-day__title { font-weight: 700; margin-bottom: 4px; }
+.plan-day__note { margin: 4px 0; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.plan-row { display: flex; align-items: center; gap: var(--space-3); padding: 7px 8px; border-radius: var(--radius-sm); }
+.plan-row + .plan-row { border-top: 1px solid var(--border-subtle); }
+.plan-row__block { flex: none; width: 92px; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-secondary); }
+.plan-row__people { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--font-size-sm); }
+.plan-row__badge { flex: none; }
+.plan-row--mine { background: var(--color-primary-soft); border-color: transparent; box-shadow: inset 3px 0 0 var(--color-primary); }
+.plan-person { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; font-weight: 600; overflow-wrap: anywhere; }
+.plan-person--me { color: var(--color-primary-strong); font-weight: 700; }
+.plan-person--free { font-weight: 500; color: var(--text-tertiary); }
+.plan-person__tag { font-size: 0.65rem; padding: 1px 7px; }
+
+.schedule-table th.is-today { color: var(--color-primary-strong); }
+.schedule-table th.is-today .date { color: var(--color-primary-strong); font-weight: 700; }
+
+/* Am Handy: ein Tag als Liste, die Woche über fünf Tasten. */
+@media screen and (max-width: 860px) {
+  .plan-week { display: none; }
+  .plan-card__heading { display: none; } /* steht schon im Reiter */
+  .plan-card__nav { width: 100%; }
+  .plan-card__nav strong { flex: 1; text-align: center; }
+  .plan-card__back { order: 1; }
+  .plan-card__back.is-hidden { display: none; }
+  .plan-chips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-bottom: var(--space-3); }
+  .plan-chip {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 2px;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-secondary);
+    font: inherit; cursor: pointer;
+  }
+  .plan-chip__day { font-weight: 700; font-size: var(--font-size-sm); }
+  .plan-chip__date { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+  .plan-chip.is-today .plan-chip__day { text-decoration: underline; text-underline-offset: 3px; }
+  .plan-chip.is-active { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary-strong); }
+  .plan-chip.is-active .plan-chip__date { color: var(--color-primary-strong); }
+  .plan-chip__dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-primary); }
+  .plan-day, .plan-day:not(.is-focus) { display: block; margin-bottom: 0; padding: var(--space-3) var(--space-2); }
+  .plan-day__title { padding: 0 8px; }
+  .plan-day__note { padding: 0 8px; }
+}
+@media (max-width: 560px) {
+  .plan-row__block { width: 84px; }
+  .plan-row__people { flex-direction: column; gap: 2px; }
+  .plan-row__badge { display: none; } /* „Sie“ und die Markierung genügen, der Platz wird für Namen gebraucht */
+}

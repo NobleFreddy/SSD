@@ -21,8 +21,8 @@
  *
  * Live-Aktualisierung: Nach jeder Änderung schickt die Datenbank nur die neue
  * Versionsnummer (Realtime-Broadcast, keine Daten); die App lädt dann über
- * `ssd_load` nach. Zusätzlich fragt sie jede Minute die Version ab, falls die
- * Live-Verbindung ausfällt.
+ * `ssd_load` nach. Zusätzlich fragt sie jede Minute und beim Zurückkehren in
+ * die App die Version ab, falls die Live-Verbindung ausfällt oder pausierte.
  */
 window.SSD = window.SSD || {};
 
@@ -156,18 +156,22 @@ SSD.Storage = (function () {
       })
       .subscribe();
 
-    const poll = setInterval(async () => {
+    async function checkVersion() {
       if (stopped || document.hidden) return;
       try {
         const res = await call('ssd_version', { p_token: token() });
+        if (stopped) return;
         if (res && res.ok) refreshIfNewer(res.version);
         else if (res && res.error === 'session') SSD.EventBus.emit('auth:expired', {});
       } catch (err) { /* offline — nächster Versuch beim nächsten Intervall */ }
-    }, POLL_INTERVAL_MS);
+    }
+    const poll = setInterval(checkVersion, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', checkVersion);
 
     return () => {
       stopped = true;
       clearInterval(poll);
+      document.removeEventListener('visibilitychange', checkVersion);
       client.removeChannel(channel);
     };
   }

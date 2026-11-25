@@ -2,10 +2,11 @@
  * ============================================================================
  * SSD.Views.StudentDashboard — Schülerbereich
  * ============================================================================
- * Zeigt ausschließlich die eigenen Daten: persönlicher Verfügbarkeits-
- * Stundenplan, bisherige/zukünftige Dienste, Änderungsfrist und persönliche
- * Hinweise des Administrators. Änderungen werden sofort automatisch
- * gespeichert (kein separater "Speichern"-Button nötig).
+ * Öffnet direkt mit dem Dienstplan (Reiter „Dienstplan“: heute, die aktuelle
+ * Woche, die eigenen nächsten Dienste und die Pinnwand). In den weiteren
+ * Reitern: persönlicher Verfügbarkeits-Stundenplan, Klausuren, bisherige und
+ * zukünftige Dienste, Veranstaltungen, Teamtreffen usw. Änderungen werden
+ * sofort automatisch gespeichert (kein separater "Speichern"-Button nötig).
  */
 window.SSD = window.SSD || {};
 SSD.Views = SSD.Views || {};
@@ -38,7 +39,11 @@ SSD.Views.StudentDashboard = (function () {
       U.el('span', { class: 'btn__label' }, ['Abmelden']),
     ]);
     logoutBtn.addEventListener('click', async () => {
-      const ok = await SSD.Dialog.confirm({ title: 'Abmelden', message: 'Möchten Sie sich wirklich abmelden?', confirmLabel: 'Abmelden' });
+      const session = SSD.Auth.getSession();
+      const message = session && session.remembered
+        ? 'Möchten Sie sich wirklich abmelden? Sie bleiben dann auf diesem Gerät nicht mehr angemeldet und brauchen beim nächsten Mal wieder Ihr Passwort.'
+        : 'Möchten Sie sich wirklich abmelden?';
+      const ok = await SSD.Dialog.confirm({ title: 'Abmelden', message, confirmLabel: 'Abmelden' });
       if (ok) SSD.Auth.logout();
     });
 
@@ -46,9 +51,13 @@ SSD.Views.StudentDashboard = (function () {
     accountBtn.addEventListener('click', () => SSD.AccountDialog.open());
 
     const saveIndicatorHandle = SSD.Views.AdminLayout.buildSaveIndicator();
+    const leadershipLabel = SSD.Models.LEADERSHIP_ROLES.find((r) => r.key === student.leadershipRole)?.label;
     const topbar = U.el('header', { class: 'topbar' }, [
       U.el('div', { class: 'sidebar__brand-icon topbar__brand-icon' }, [U.el('img', { src: 'assets/logo.png', alt: 'Vereinslogo' })]),
-      U.el('div', { class: 'topbar__title' }, [`Hallo, ${student.firstName}!`]),
+      U.el('div', { class: 'topbar__title' }, [
+        `Hallo, ${student.firstName}!`,
+        leadershipLabel ? U.el('span', { class: 'badge badge--primary topbar__role', html: SSD.Icons.svg('star', { size: 11 }) }, [leadershipLabel]) : null,
+      ]),
       saveIndicatorHandle.el,
       accountBtn,
       themeToggle,
@@ -223,15 +232,16 @@ SSD.Views.StudentDashboard = (function () {
 
   let topbarCleanup = null;
   let offRemoteChanges = null;
-  let activeTab = 'availability'; // 'availability' | 'schedule' | 'openDuties' | 'tasks' | 'events' | 'meetings' | 'materials' | 'teamLead'
+  let activeTab = 'start'; // 'start' | 'availability' | 'openDuties' | 'tasks' | 'events' | 'meetings' | 'materials' | 'teamLead'
   let teamLeadSection = 'overview'; // Unterreiter der Team-Verwaltung: 'overview' | 'members' | 'engagement'
-  let scheduleViewedMonday = U.getMondayOfWeek(U.today());
+  let plan = null; // Auswahl im Dienstplan: { monday: Date, dayIso: string, todayIso: string } (siehe resetPlan)
+  let onVisible = null;
   let tabBody = null;
   let tabSwitcherEl = null;
   let topAreaEl = null;
 
   /**
-   * Zeichnet Hinweise/Pinnwand, die Tab-Leiste (Zähler) und den aktiven Tab neu —
+   * Zeichnet Hinweise, die Tab-Leiste (Zähler) und den aktiven Tab neu —
    * immer mit dem aktuellen Datenstand der angemeldeten Person (nach einem
    * Realtime-Update ist das zuvor gemerkte Personen-Objekt veraltet).
    */
@@ -242,7 +252,7 @@ SSD.Views.StudentDashboard = (function () {
     renderTabBody(student);
   }
 
-  /** Nur Hinweise, Pinnwand und Tab-Leiste — der gerade bearbeitete Tab-Inhalt bleibt stehen. */
+  /** Nur Hinweise und Tab-Leiste — der gerade bearbeitete Tab-Inhalt bleibt stehen. */
   function refreshChrome(student) {
     if (topAreaEl) {
       const freshTop = buildTopArea(student);
@@ -567,25 +577,193 @@ SSD.Views.StudentDashboard = (function () {
     ]);
   }
 
-  /** Bereich über den Tabs: Vertretungs-Hinweis, nächste Dienste, Erinnerung (falls vorhanden) und Pinnwand. */
+  /** Bereich unter der Tab-Leiste, in jedem Reiter sichtbar: „Sie wurden als Vertretung eingeteilt“. */
   function buildTopArea(student) {
     const area = U.el('div', { class: 'stack gap-4' });
     const autoNotice = buildAutoSubstitutionNotice(student);
     if (autoNotice) area.appendChild(autoNotice);
-    const quickDuties = buildQuickDutiesCard(student);
-    if (quickDuties) area.appendChild(quickDuties);
-    if (SSD.StudentService.needsAvailabilityReminder(student)) area.appendChild(buildAvailabilityReminder(student));
-    const board = SSD.AnnouncementBoard.render({ onChange: refreshAll });
-    if (board) area.appendChild(board);
     if (!area.children.length) area.style.display = 'none';
     return area;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Reiter „Dienstplan“ (Startseite)
+   * ---------------------------------------------------------------------
+   * Am PC: die Wochentabelle, darüber der heutige Tag. Am Handy: ein Tag als
+   * Liste, die anderen Tage der Woche einen Tipp entfernt.
+   * ------------------------------------------------------------------- */
+
+  function hasDutyBlocks(dateIso) {
+    const weekday = U.weekdayKeyFromDate(U.parseIsoDate(dateIso));
+    return !!weekday && !SSD.CalendarService.getSpecialDayForDate(dateIso) && SSD.CalendarService.getEnabledBlocksForWeekday(weekday).length > 0;
+  }
+
+  /** Heute — oder, an freien Tagen, der nächste Tag mit Diensten (höchstens 60 Tage voraus). */
+  function focusDayIso() {
+    const today = U.today();
+    for (let i = 0; i <= 60; i++) {
+      const iso = U.toIsoDate(U.addDays(today, i));
+      if (hasDutyBlocks(iso)) return iso;
+    }
+    return U.toIsoDate(U.isWeekend(today) ? U.addDays(U.getMondayOfWeek(today), 7) : today);
+  }
+
+  /** Zeigt wieder heute bzw. den nächsten Diensttag. */
+  function resetPlan() {
+    const dayIso = focusDayIso();
+    plan = { monday: U.getMondayOfWeek(U.parseIsoDate(dayIso)), dayIso, todayIso: U.toIsoDate(U.today()) };
+  }
+
+  function showWeek(monday) {
+    const focus = focusDayIso();
+    const dates = U.getWeekDates(monday).map((d) => U.toIsoDate(d));
+    plan.monday = monday;
+    plan.dayIso = dates.includes(focus) ? focus : dates.find(hasDutyBlocks) || dates[0];
+  }
+
+  function isOwnDuty(entry, personId) {
+    return !!entry && (entry.studentIds.includes(personId) || entry.azubiId === personId);
+  }
+
+  /** „Heute · Mittwoch, 25.11.“ */
+  function planDayTitle(dayIso) {
+    const date = U.parseIsoDate(dayIso);
+    const label = relativeDayLabel(dayIso);
+    const day = `${U.WEEKDAY_LABELS[U.weekdayKeyFromDate(date)]}, ${U.formatDateShort(date)}`;
+    if (label) return `${label} · ${day}`;
+    return dayIso === focusDayIso() ? `Nächster Diensttag · ${day}` : day;
+  }
+
+  /** Ein Tag als Liste: je Dienstblock, wer eingeteilt ist. */
+  function buildPlanDay(student) {
+    const dayIso = plan.dayIso;
+    const weekday = U.weekdayKeyFromDate(U.parseIsoDate(dayIso));
+    const perDuty = SSD.SettingsService.get().studentsPerDuty;
+    const specialDay = SSD.CalendarService.getSpecialDayForDate(dayIso);
+    const blocks = specialDay ? [] : U.DUTY_BLOCKS.filter((b) => SSD.CalendarService.isBlockEnabled(weekday, b.key));
+
+    const rows = blocks.map((block) => {
+      const entry = SSD.ScheduleTable.findEntry(dayIso, block.key);
+      const mine = isOwnDuty(entry, student.id);
+      const requests = entry ? SSD.SelfServiceService.activeRequestsOf(entry).map((r) => r.studentId) : [];
+      const person = (id, azubi) => U.el('span', { class: `plan-person${id === student.id ? ' plan-person--me' : ''}` }, [
+        id === student.id ? 'Sie' : personName(id),
+        azubi ? U.el('span', { class: 'badge badge--primary plan-person__tag' }, ['Azubi']) : null,
+        requests.includes(id) ? U.el('span', { class: 'badge badge--warning plan-person__tag' }, ['Vertretung gesucht']) : null,
+      ]);
+      const ids = entry ? entry.studentIds : [];
+      const free = Math.max(0, perDuty - ids.length);
+      const people = ids.map((id) => person(id));
+      if (entry && entry.azubiId) people.push(person(entry.azubiId, true));
+      if (!ids.length) people.push(U.el('span', { class: 'plan-person plan-person--free' }, ['noch niemand eingeteilt']));
+      else if (free) people.push(U.el('span', { class: 'plan-person plan-person--free' }, [free === 1 ? '1 Platz frei' : `${free} Plätze frei`]));
+      return U.el('div', { class: `plan-row${mine ? ' plan-row--mine' : ''}` }, [
+        U.el('div', { class: 'plan-row__block' }, [block.label]),
+        U.el('div', { class: 'plan-row__people' }, people),
+        mine ? U.el('span', { class: 'badge badge--primary plan-row__badge' }, ['Ihr Dienst']) : null,
+      ]);
+    });
+
+    const todaySpecial = dayIso !== plan.todayIso && dayIso === focusDayIso() ? SSD.CalendarService.getSpecialDayForDate(plan.todayIso) : null;
+    const specialLabel = (d) => [SSD.Models.SPECIAL_DAY_TYPES.find((t) => t.key === d.type).label, d.label].filter(Boolean).join(': ');
+    return U.el('div', { class: `plan-day${dayIso === focusDayIso() ? ' is-focus' : ''}` }, [
+      U.el('div', { class: 'plan-day__title' }, [planDayTitle(dayIso)]),
+      todaySpecial ? U.el('p', { class: 'plan-day__note' }, [`Heute kein Dienst (${specialLabel(todaySpecial)}).`]) : null,
+      rows.length
+        ? U.el('div', {}, rows)
+        : U.el('p', { class: 'plan-day__note' }, [specialDay ? `Kein Dienst (${specialLabel(specialDay)}).` : 'Kein Dienst an diesem Tag.']),
+    ]);
+  }
+
+  /** Mo–Fr zum Antippen (nur am Handy sichtbar); ein Punkt markiert Tage mit eigenem Dienst. */
+  function buildPlanDayChips(student) {
+    const buttons = U.getWeekDates(plan.monday).map((date, i) => {
+      const iso = U.toIsoDate(date);
+      const selected = iso === plan.dayIso;
+      const own = SSD.Store.getState().schedule.entries.some((e) => e.date === iso && isOwnDuty(e, student.id));
+      const btn = U.el('button', {
+        type: 'button',
+        'data-plan': `day${i}`,
+        class: `plan-chip${selected ? ' is-active' : ''}${iso === plan.todayIso ? ' is-today' : ''}`,
+        'aria-pressed': selected ? 'true' : 'false',
+        'aria-label': `${U.WEEKDAY_LABELS[U.WEEKDAY_KEYS[i]]}, ${U.formatDateShort(date)}${own ? ', eigener Dienst' : ''}`,
+      }, [
+        U.el('span', { class: 'plan-chip__day' }, [U.WEEKDAY_LABELS_SHORT[U.WEEKDAY_KEYS[i]]]),
+        U.el('span', { class: 'plan-chip__date' }, [U.formatDateShort(date)]),
+        own ? U.el('span', { class: 'plan-chip__dot' }) : null,
+      ]);
+      btn.addEventListener('click', () => { plan.dayIso = iso; renderPlanCard(student); });
+      return btn;
+    });
+    return U.el('div', { class: 'plan-chips' }, buttons);
+  }
+
+  let planCardEl = null;
+
+  function buildPlanCard(student) {
+    const step = (days) => { showWeek(U.addDays(plan.monday, days)); renderPlanCard(student); };
+    const prevBtn = U.el('button', { class: 'btn btn--icon btn--secondary btn--sm', 'data-plan': 'prev', 'data-tooltip': 'Vorherige Woche', 'aria-label': 'Vorherige Woche', html: SSD.Icons.svg('chevronLeft', { size: 16 }) });
+    prevBtn.addEventListener('click', () => step(-7));
+    const nextBtn = U.el('button', { class: 'btn btn--icon btn--secondary btn--sm', 'data-plan': 'next', 'data-tooltip': 'Nächste Woche', 'aria-label': 'Nächste Woche', html: SSD.Icons.svg('chevronRight', { size: 16 }) });
+    nextBtn.addEventListener('click', () => step(7));
+    const focusMonday = U.getMondayOfWeek(U.parseIsoDate(focusDayIso()));
+    const away = !U.isSameDay(plan.monday, focusMonday) || plan.dayIso !== focusDayIso();
+    const backBtn = U.el('button', { class: `btn btn--ghost btn--sm plan-card__back${away ? '' : ' is-hidden'}` }, [focusDayIso() === plan.todayIso ? 'Heute' : 'Aktuell']);
+    backBtn.addEventListener('click', () => { resetPlan(); renderPlanCard(student); });
+
+    return U.el('section', { class: 'card plan-card', 'aria-label': 'Dienstplan' }, [
+      U.el('div', { class: 'card__header plan-card__header' }, [
+        U.el('div', { class: 'plan-card__heading' }, [
+          U.el('div', { class: 'card__title' }, ['Dienstplan']),
+          U.el('div', { class: 'card__subtitle' }, ['Alle eingeteilten Personen — Ihre eigenen Dienste sind hervorgehoben.']),
+        ]),
+        U.el('div', { class: 'plan-card__nav' }, [
+          backBtn,
+          prevBtn,
+          U.el('strong', {}, [`KW ${U.getIsoWeekNumber(plan.monday)}`, U.el('span', { class: 'plan-card__range' }, [` · ${U.formatDateShort(plan.monday)}–${U.formatDateShort(U.addDays(plan.monday, 4))}`])]),
+          nextBtn,
+        ]),
+      ]),
+      U.el('div', { class: 'card__body' }, [
+        buildPlanDayChips(student),
+        buildPlanDay(student),
+        U.el('div', { class: 'plan-week' }, [
+          SSD.ScheduleTable.render(plan.monday, { highlightPersonId: student.id }),
+          U.el('div', { style: 'margin-top:20px;' }, [SSD.ScheduleTable.renderLegend()]),
+        ]),
+      ]),
+    ]);
+  }
+
+  /** Nur die Plan-Karte neu zeichnen (Tag/Woche gewechselt) — der Rest der Seite bleibt stehen. */
+  function renderPlanCard(student) {
+    if (!planCardEl) return;
+    const focused = planCardEl.contains(document.activeElement) ? document.activeElement.getAttribute('data-plan') : null;
+    const fresh = buildPlanCard(student);
+    planCardEl.replaceWith(fresh);
+    planCardEl = fresh;
+    SSD.Tooltip.hide();
+    const again = focused && fresh.querySelector(`[data-plan="${focused}"]:not(.is-hidden)`); // Tastaturbedienung
+    if (again) again.focus({ preventScroll: true });
+  }
+
+  function buildStartTab(student) {
+    planCardEl = buildPlanCard(student);
+    const side = U.el('div', { class: 'stack gap-5' });
+    const quickDuties = buildQuickDutiesCard(student);
+    if (quickDuties) side.appendChild(quickDuties);
+    if (SSD.StudentService.needsAvailabilityReminder(student)) side.appendChild(buildAvailabilityReminder(student));
+    const board = SSD.AnnouncementBoard.render({ onChange: refreshAll });
+    if (board) side.appendChild(board);
+    if (!side.children.length) return planCardEl;
+    return U.el('div', { class: 'start-layout' }, [planCardEl, side]);
   }
 
   function buildTabSwitcher(student) {
     const openSeatCount = SSD.SelfServiceService.getOpenSeatsForPerson(student).length;
     const tabDefs = [
+      { key: 'start', label: 'Dienstplan' },
       { key: 'availability', label: 'Meine Verfügbarkeit' },
-      { key: 'schedule', label: 'Dienstplan (alle)' },
       { key: 'openDuties', label: 'Offene Dienste', badge: openSeatCount || null },
       { key: 'tasks', label: 'Aufgaben', badge: SSD.TasksService.getOpen().length || null },
       { key: 'events', label: 'Veranstaltungen' },
@@ -935,30 +1113,6 @@ SSD.Views.StudentDashboard = (function () {
     return U.el('div', { class: 'stack gap-4' }, events.map((event) => buildEventCard(student, event)));
   }
 
-  function buildFullScheduleTab(student) {
-    const prevBtn = U.el('button', { class: 'btn btn--icon btn--secondary', 'data-tooltip': 'Vorherige Woche', html: SSD.Icons.svg('chevronLeft', { size: 16 }) });
-    prevBtn.addEventListener('click', () => { scheduleViewedMonday = U.addDays(scheduleViewedMonday, -7); renderTabBody(student); });
-    const nextBtn = U.el('button', { class: 'btn btn--icon btn--secondary', 'data-tooltip': 'Nächste Woche', html: SSD.Icons.svg('chevronRight', { size: 16 }) });
-    nextBtn.addEventListener('click', () => { scheduleViewedMonday = U.addDays(scheduleViewedMonday, 7); renderTabBody(student); });
-    const todayBtn = U.el('button', { class: 'btn btn--secondary btn--sm' }, ['Aktuelle Woche']);
-    todayBtn.addEventListener('click', () => { scheduleViewedMonday = U.getMondayOfWeek(U.today()); renderTabBody(student); });
-
-    const card = U.el('div', { class: 'card animate-rise-in' });
-    card.appendChild(U.el('div', { class: 'card__header' }, [
-      U.el('div', {}, [
-        U.el('div', { class: 'card__title' }, ['Vollständiger Dienstplan']),
-        U.el('div', { class: 'card__subtitle' }, ['Alle eingeteilten Personen — Ihre eigenen Dienste sind hervorgehoben.']),
-      ]),
-      U.el('div', { class: 'cluster gap-2' }, [prevBtn, U.el('strong', { style: 'font-size:var(--font-size-sm);' }, [`${U.formatDateMedium(scheduleViewedMonday)} – ${U.formatDateMedium(U.addDays(scheduleViewedMonday, 4))}`]), nextBtn, todayBtn]),
-    ]));
-    const body = U.el('div', { class: 'card__body' }, [
-      SSD.ScheduleTable.render(scheduleViewedMonday, { highlightPersonId: student.id }),
-      U.el('div', { style: 'margin-top:20px;' }, [SSD.ScheduleTable.renderLegend()]),
-    ]);
-    card.appendChild(body);
-    return card;
-  }
-
   function miniStat(icon, value, label) {
     return U.el('div', { class: 'stat-tile', style: 'box-shadow:none; border-color:var(--border-subtle);' }, [
       U.el('div', { class: 'stat-tile__icon', html: SSD.Icons.svg(icon, { size: 17 }) }),
@@ -1100,9 +1254,10 @@ SSD.Views.StudentDashboard = (function () {
 
   function renderTabBody(student) {
     tabBody.innerHTML = '';
-    if (activeTab === 'teamLead' && !SSD.StudentService.isTeamLead(student)) activeTab = 'availability';
-    if (activeTab === 'schedule') {
-      tabBody.appendChild(buildFullScheduleTab(student));
+    planCardEl = null;
+    if (activeTab === 'teamLead' && !SSD.StudentService.isTeamLead(student)) activeTab = 'start';
+    if (activeTab === 'start') {
+      tabBody.appendChild(buildStartTab(student));
       return;
     }
     if (activeTab === 'openDuties') {
@@ -1143,8 +1298,11 @@ SSD.Views.StudentDashboard = (function () {
   function render(container) {
     const student = SSD.Auth.getCurrentStudent();
     if (!student) { SSD.Auth.logout(); return; }
-    activeTab = 'availability';
+    // Wer noch gar nichts eingetragen hat und keinen Dienst hat, beginnt bei der Verfügbarkeit.
+    const isNew = !SSD.StatisticsService.hasAnyAvailability(student) && !SSD.SelfServiceService.getUpcomingDutiesOf(student.id).length;
+    activeTab = isNew ? 'availability' : 'start';
     teamLeadSection = 'overview';
+    resetPlan();
 
     const topbarHandle = buildTopbar(student);
     topbarCleanup = topbarHandle.cleanup;
@@ -1153,46 +1311,47 @@ SSD.Views.StudentDashboard = (function () {
     const viewContainer = U.el('div', { class: 'view-container' });
     const inner = U.el('div', { class: 'view-container__inner' });
 
-    const teamLabel = student.role === 'azubi' ? 'Azubi-Team' : 'Schulsanitätsdienst-Team';
-    const leadershipLabel = SSD.Models.LEADERSHIP_ROLES.find((r) => r.key === student.leadershipRole)?.label;
-    inner.appendChild(U.el('div', { class: 'welcome-banner' }, [
-      U.el('div', {}, [
-        U.el('div', { class: 'cluster gap-2' }, [
-          U.el('h2', { style: 'margin:0;' }, [`Willkommen zurück, ${student.firstName}!`]),
-          leadershipLabel ? U.el('span', { class: 'badge', style: 'background:rgba(255,255,255,0.22); color:#fff;', html: SSD.Icons.svg('star', { size: 11 }) }, [leadershipLabel]) : null,
-        ]),
-        U.el('p', {}, [`${student.schoolClass ? `Klasse ${student.schoolClass} · ` : ''}${teamLabel}`]),
-      ]),
-      U.el('div', { class: 'welcome-banner__icon', html: SSD.Icons.svg('heart', { size: 46 }) }),
-    ]));
-
-    topAreaEl = buildTopArea(student);
-    inner.appendChild(topAreaEl);
     tabSwitcherEl = buildTabSwitcher(student);
     inner.appendChild(tabSwitcherEl);
-    tabBody = U.el('div', { style: 'margin-top:20px;' });
+    topAreaEl = buildTopArea(student);
+    inner.appendChild(topAreaEl);
+    tabBody = U.el('div');
     inner.appendChild(tabBody);
     renderTabBody(student);
 
     viewContainer.appendChild(inner);
     container.appendChild(viewContainer);
 
-    // Änderungen von anderen Geräten (z. B. neuer Pinnwand-Beitrag): Hinweise, Pinnwand und
-    // Zähler sofort aktualisieren — den gerade geöffneten Tab-Inhalt aber nicht unter den
-    // Händen der Person austauschen (der aktualisiert sich bei der nächsten Aktion).
+    // Änderungen von anderen Geräten (z. B. neue Vertretung, neuer Pinnwand-Beitrag): Hinweise,
+    // Zähler und der Plan (nur Anzeige) sofort aktualisieren — andere Tab-Inhalte aber nicht unter
+    // den Händen der Person austauschen (die aktualisieren sich bei der nächsten Aktion).
     offRemoteChanges = SSD.EventBus.on('store:changed', (evt) => {
       if (!evt || !evt.remote) return;
       const fresh = SSD.Auth.getCurrentStudent();
       if (!fresh || !fresh.active) { SSD.Auth.logout(); return; }
-      if (activeTab === 'teamLead' && !SSD.StudentService.isTeamLead(fresh)) renderTabBody(fresh);
+      if (activeTab === 'start' || (activeTab === 'teamLead' && !SSD.StudentService.isTeamLead(fresh))) renderTabBody(fresh);
       refreshChrome(fresh);
     });
+
+    // Die App blieb über Nacht offen (am Handy üblich): beim Zurückkehren wieder den heutigen Tag zeigen.
+    onVisible = () => {
+      if (document.hidden || !plan || plan.todayIso === U.toIsoDate(U.today())) return;
+      const fresh = SSD.Auth.getCurrentStudent();
+      if (!fresh) return;
+      resetPlan();
+      if (activeTab === 'start') renderTabBody(fresh);
+      refreshChrome(fresh);
+    };
+    document.addEventListener('visibilitychange', onVisible);
   }
 
   function destroy() {
     if (topbarCleanup) topbarCleanup();
     if (offRemoteChanges) offRemoteChanges();
     offRemoteChanges = null;
+    if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+    onVisible = null;
+    planCardEl = null;
     topAreaEl = null;
     tabSwitcherEl = null;
   }

@@ -69,6 +69,10 @@
       SSD.Auth.logout();
       setTimeout(() => { expiredShown = false; }, 3000);
     });
+    SSD.EventBus.on('auth:ended-elsewhere', () => {
+      SSD.Toast.info('Abgemeldet', 'Die Anmeldung wurde in einem anderen Tab beendet.');
+    });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) SSD.Auth.renewIfDue(); });
     // Nach der Anmeldung: vom Administrator vergebenes Startpasswort ändern bzw. zu kurzes Passwort ersetzen.
     SSD.EventBus.on('router:navigated', () => {
       const session = SSD.Auth.getSession();
@@ -103,19 +107,22 @@
     const root = document.getElementById('app-root');
     renderLoadingScreen(root);
 
+    let signInEnded = false;
     try {
-      SSD.Store.setPublicInfo(await SSD.Storage.fetchPublicInfo());
-      if (SSD.Auth.getSession()) {
-        // Noch angemeldet (z. B. Seite neu geladen): Daten mit der bestehenden Sitzung laden.
+      // Noch angemeldet (Seite neu geladen, „Angemeldet bleiben“): Daten gleichzeitig mit den öffentlichen Angaben laden.
+      const session = SSD.Auth.getSession();
+      if (!session) SSD.Auth.clearSession(); // Sitzung aus einer früheren Version (ohne Token)
+      const loadOwnData = async () => {
         try {
           await SSD.Store.load();
         } catch (err) {
           if (!err.sessionExpired) throw err;
+          signInEnded = !!session.remembered;
           SSD.Auth.clearSession();
         }
-      } else {
-        SSD.Auth.clearSession(); // Sitzung aus einer früheren Version (ohne Token)
-      }
+      };
+      const [info] = await Promise.all([SSD.Storage.fetchPublicInfo(), session ? loadOwnData() : null]);
+      SSD.Store.setPublicInfo(info);
     } catch (err) {
       console.error('[App] Initialisierung fehlgeschlagen:', err);
       renderErrorScreen(root, `Die Daten konnten nicht geladen werden (${err.message || err}). Bitte Internetverbindung prüfen.`);
@@ -128,6 +135,8 @@
     handleStorageEvents();
     registerRoutes();
     SSD.Router.start(root);
+    if (signInEnded) SSD.Toast.info('Bitte neu anmelden', 'Die Anmeldung auf diesem Gerät ist abgelaufen oder wurde beendet.');
+    SSD.Auth.renewIfDue();
   }
 
   if (document.readyState === 'loading') {

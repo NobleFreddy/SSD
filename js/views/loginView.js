@@ -87,11 +87,20 @@ SSD.Views.Login = (function () {
       const usernameInput = U.el('input', { class: 'input', autocomplete: 'username', placeholder: 'Benutzername' });
       const passwordInput = U.el('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: 'Passwort' });
       const submitBtn = U.el('button', { class: 'btn btn--primary btn--block btn--lg', type: 'submit' }, ['Anmelden']);
+      const rememberInput = U.el('input', { type: 'checkbox' });
+      const rememberRow = role === 'admin' ? null : U.el('label', { class: 'checkbox-row remember-row' }, [
+        rememberInput,
+        U.el('span', {}, [
+          'Auf diesem Gerät angemeldet bleiben',
+          U.el('span', { class: 'remember-row__hint' }, ['Nur auf dem eigenen Handy oder Computer, nicht an Schulgeräten.']),
+        ]),
+      ]);
 
       const form = U.el('form', {}, [
         errorBox,
         field('Benutzername', usernameInput),
         field('Passwort', passwordInput),
+        rememberRow,
         submitBtn,
       ]);
 
@@ -109,7 +118,8 @@ SSD.Views.Login = (function () {
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Wird geprüft …';
-        const result = await SSD.Auth.login(role === 'admin' ? 'admin' : 'student', username, password);
+        const remember = role !== 'admin' && rememberInput.checked;
+        const result = await SSD.Auth.login(role === 'admin' ? 'admin' : 'student', username, password, { remember });
         if (!result.ok) {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Anmelden';
@@ -118,7 +128,13 @@ SSD.Views.Login = (function () {
           passwordInput.focus();
           return;
         }
-        SSD.Toast.success('Willkommen!', role === 'admin' ? 'Als Administrator angemeldet.' : 'Erfolgreich angemeldet.');
+        if (remember && !result.remembered) {
+          SSD.Toast.warning('Angemeldet', '„Angemeldet bleiben“ hat auf diesem Gerät nicht geklappt — die Anmeldung endet mit dem Schließen der Seite.');
+        } else if (remember) {
+          SSD.Toast.success('Willkommen!', 'Sie bleiben auf diesem Gerät angemeldet. Beenden können Sie das jederzeit über „Abmelden“.');
+        } else {
+          SSD.Toast.success('Willkommen!', role === 'admin' ? 'Als Administrator angemeldet.' : 'Erfolgreich angemeldet.');
+        }
       });
 
       if (role !== 'admin' && info.selfRegistration) {

@@ -15,7 +15,7 @@ SSD.Views.Privacy = (function () {
   'use strict';
 
   const U = SSD.Utils;
-  const LAST_CHANGED = '09.10.2026';
+  const LAST_CHANGED = '25.11.2026';
   const MISSING = '[noch nicht angegeben — bitte bei der Schule erfragen]';
 
   function section(title, children) {
@@ -92,6 +92,7 @@ SSD.Views.Privacy = (function () {
           'Bemerkungen und Hinweise der Administration zur Person',
           'Anmeldedaten: Das Passwort wird nur als nicht umkehrbarer Hash (bcrypt) auf dem Server gespeichert.',
           'Ein Protokoll der Anmeldungen und Speichervorgänge (wer, wann) zum Schutz vor Missbrauch',
+          'Nur wenn Sie „Auf diesem Gerät angemeldet bleiben“ wählen: eine grobe Gerätebezeichnung (zum Beispiel „iPhone · Safari“) und der Zeitpunkt der letzten Nutzung, damit Sie ein verlorenes Gerät erkennen und abmelden können',
         ]),
       ]),
 
@@ -120,12 +121,12 @@ SSD.Views.Privacy = (function () {
           'Konten bis zum Ausscheiden aus dem Schulsanitätsdienst; danach löscht die Administration das Konto.',
           `Dienste, Dienstverlauf, Teamtreffen, Veranstaltungen, erledigte Aufgaben und Materialanfragen eines Schuljahres: ${grace ? `${grace} Monat${grace === 1 ? '' : 'e'} nach Schuljahresende` : 'zum Schuljahresende'}.`,
           'Abgelaufene Pinnwand-Beiträge, nie freigeschaltete Registrierungen und Teams-Meldungen: 30 Tage; vergangene Wochen-Verfügbarkeiten und Klausuren 30 Tage nach ihrem Ende.',
-          'Anmeldungen enden spätestens nach 12 Stunden; das Zugriffsprotokoll wird nach 90 Tagen, Anmeldeversuche nach einem Tag gelöscht.',
+          'Anmeldungen enden spätestens nach 12 Stunden. Haben Sie „Auf diesem Gerät angemeldet bleiben“ gewählt, enden sie, wenn sie 60 Tage nicht genutzt wurden, spätestens nach einem Jahr — oder sofort, wenn Sie sich abmelden oder das Gerät unter „Mein Konto“ abmelden. Für die Administration gilt das nicht. Das Zugriffsprotokoll wird nach 90 Tagen, Anmeldeversuche nach einem Tag gelöscht.',
         ]),
       ]),
 
       section('8. Speicherung im Browser', [
-        p('Die App setzt keine Cookies und nutzt keine Analyse- oder Werbedienste. Im Browser gespeichert werden nur die Anmeldung (bis zum Schließen des Tabs) und die Einstellung Hell/Dunkel. Beides ist für die Nutzung erforderlich.'),
+        p('Die App setzt keine Cookies und nutzt keine Analyse- oder Werbedienste. Im Browser gespeichert werden nur die Anmeldung (bis zum Schließen des Tabs; wenn Sie „Auf diesem Gerät angemeldet bleiben“ wählen, bis zum Abmelden) und die Einstellung Hell/Dunkel. Beides ist für die von Ihnen gewünschte Nutzung erforderlich. Die Daten selbst (Dienstplan, Namen) werden nicht im Browser gespeichert.'),
       ]),
 
       section('9. Automatische Einteilung', [
