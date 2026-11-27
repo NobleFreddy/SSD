@@ -275,6 +275,12 @@ SSD.AccountDialog = (function () {
       buildSessionsSection(),
       U.el('div', {}, [
         U.el('div', { class: 'section-label' }, ['Meine Daten']),
+        U.el('dl', { class: 'account-facts' }, [
+          ['Klasse', student.schoolClass || '—'],
+          ['Abijahrgang', String(student.yearGroup || '—')],
+          ['Höchstens Dienste pro Woche', String(student.maxDutiesPerWeek || SSD.SettingsService.get().maxDutiesPerWeek)],
+          student.notes ? ['Bemerkung der Administration', student.notes] : null,
+        ].filter(Boolean).flatMap(([k, v]) => [U.el('dt', {}, [k]), U.el('dd', {}, [v])])),
         U.el('p', { style: 'margin:0 0 10px;' }, ['Laden Sie eine Kopie aller Daten herunter, die zu Ihrer Person gespeichert sind (JSON-Datei). Für Berichtigung oder Löschung wenden Sie sich an die Administration.']),
         U.el('div', { class: 'cluster gap-2' }, [downloadBtn, passwordBtn]),
       ]),

@@ -2,11 +2,16 @@
  * ============================================================================
  * SSD.Views.StudentDashboard — Schülerbereich
  * ============================================================================
- * Öffnet direkt mit dem Dienstplan (Reiter „Dienstplan“: heute, die aktuelle
- * Woche, die eigenen nächsten Dienste und die Pinnwand). In den weiteren
- * Reitern: persönlicher Verfügbarkeits-Stundenplan, Klausuren, bisherige und
- * zukünftige Dienste, Veranstaltungen, Teamtreffen usw. Änderungen werden
- * sofort automatisch gespeichert (kein separater "Speichern"-Button nötig).
+ * Vier Bereiche — am Handy als Leiste am unteren Rand, am PC als Reiter:
+ *   - Dienstplan (Start): „Verstärkung anfordern“ und „Ich falle aus“, heute
+ *     und die aktuelle Woche, die nächsten eigenen Dienste, die Pinnwand
+ *   - Meine Dienste: alle kommenden Dienste und Verstärkungen mit
+ *     Vertretungsanfrage, abgegebene Dienste, offene Dienste zum Übernehmen
+ *   - Verfügbarkeit: Stundenplan, Klausuren, Wunschpartner:innen
+ *   - Team: Teamtreffen, Veranstaltungen, Aufgaben, Material, Team-Verwaltung
+ * Hinweise, die eine Reaktion brauchen (als Vertretung bzw. Verstärkung
+ * eingeteilt), stehen in jedem Bereich oben. Änderungen werden sofort
+ * automatisch gespeichert.
  */
 window.SSD = window.SSD || {};
 SSD.Views = SSD.Views || {};
@@ -90,99 +95,6 @@ SSD.Views.StudentDashboard = (function () {
     ]);
   }
 
-  function buildDutiesCard(student, summary) {
-    const card = U.el('div', { class: 'card animate-rise-in' });
-    card.appendChild(U.el('div', { class: 'card__header' }, [
-      U.el('div', { class: 'card__title' }, ['Meine kommenden Dienste']),
-    ]));
-    const body = U.el('div', { class: 'card__body' });
-    if (!summary.upcoming.length) {
-      body.appendChild(U.el('div', { class: 'empty-state' }, [
-        U.el('span', { html: SSD.Icons.svg('calendar', { size: 40 }) }),
-        U.el('h3', {}, ['Aktuell keine anstehenden Dienste']),
-        U.el('p', {}, ['Sobald der Administrator den nächsten Dienstplan erstellt, erscheinen Ihre Termine hier.']),
-      ]));
-    } else {
-      const list = U.el('div', { class: 'stack gap-1' });
-      summary.upcoming.slice(0, 8).forEach((duty) => {
-        const requested = SSD.SelfServiceService.hasOpenRequest(student.id, duty);
-        const actionBtn = U.el('button', {
-          class: `btn btn--sm ${requested ? 'btn--secondary' : 'btn--ghost'}`,
-          html: SSD.Icons.svg(requested ? 'x' : 'handRaised', { size: 13 }),
-        }, [requested ? 'Anfrage zurückziehen' : 'Vertretung anfordern']);
-        actionBtn.addEventListener('click', () => {
-          if (requested) withdrawSubstitutionFor(student, duty);
-          else requestSubstitutionFor(student, duty);
-        });
-
-        list.appendChild(U.el('div', { class: 'cluster gap-3', style: 'padding:10px 4px; border-bottom:1px solid var(--border-subtle); justify-content:space-between;' }, [
-          U.el('div', { class: 'cluster gap-3' }, [
-            U.el('span', { html: SSD.Icons.svg('clock', { size: 16 }), style: 'color:var(--color-primary); display:flex;' }),
-            U.el('strong', {}, [U.formatDateLong(U.parseIsoDate(duty.date))]),
-            U.el('span', { class: 'badge badge--primary' }, [U.blockLabel(duty.block)]),
-            urgencyBadge(duty.date),
-            requested ? U.el('span', { class: 'badge badge--warning' }, ['Vertretung gesucht']) : null,
-          ]),
-          actionBtn,
-        ]));
-      });
-      body.appendChild(list);
-    }
-    card.appendChild(body);
-    return card;
-  }
-
-  function buildSideColumn(student, summary) {
-    const col = U.el('div', { class: 'stack gap-5' });
-
-    col.appendChild(U.el('div', { class: 'stat-tile' }, [
-      U.el('div', { class: 'stat-tile__top' }, [
-        U.el('div', { class: 'stat-tile__icon', html: SSD.Icons.svg('trophy', { size: 19 }) }),
-      ]),
-      U.el('div', { class: 'stat-tile__value' }, [String(summary.total)]),
-      U.el('div', { class: 'stat-tile__label' }, ['Dienste insgesamt geleistet/geplant']),
-    ]));
-    col.appendChild(U.el('div', { class: 'stat-tile' }, [
-      U.el('div', { class: 'stat-tile__top' }, [
-        U.el('div', { class: 'stat-tile__icon', html: SSD.Icons.svg('checkCircle', { size: 19 }) }),
-      ]),
-      U.el('div', { class: 'stat-tile__value' }, [String(summary.past.length)]),
-      U.el('div', { class: 'stat-tile__label' }, ['Bereits absolvierte Dienste']),
-    ]));
-
-    if ((student.role || 'student') === 'student') col.appendChild(buildWishCard(student));
-
-    if (student.adminMessage) {
-      col.appendChild(U.el('div', { class: 'notice-box' }, [
-        U.el('span', { html: SSD.Icons.svg('bell', { size: 20 }) }),
-        U.el('div', {}, [
-          U.el('strong', {}, ['Hinweis vom Administrator']),
-          U.el('p', {}, [student.adminMessage]),
-        ]),
-      ]));
-    }
-
-    if (student.notes) {
-      col.appendChild(U.el('div', { class: 'card' }, [
-        U.el('div', { class: 'card__body' }, [
-          U.el('div', { class: 'card__subtitle' }, ['Hinterlegte Bemerkung']),
-          U.el('p', { style: 'margin-top:6px;' }, [student.notes]),
-        ]),
-      ]));
-    }
-
-    col.appendChild(U.el('div', { class: 'card' }, [
-      U.el('div', { class: 'card__body stack gap-2' }, [
-        U.el('div', { class: 'cluster gap-2' }, [U.el('span', { html: SSD.Icons.svg('info', { size: 15 }), style: 'color:var(--text-tertiary);display:flex;' }), U.el('strong', { style: 'font-size:var(--font-size-sm);' }, ['Meine Daten'])]),
-        infoRow('Klasse', student.schoolClass || '—'),
-        infoRow('Abijahrgang', String(student.yearGroup || '—')),
-        infoRow('Max. Dienste/Woche', String(student.maxDutiesPerWeek || SSD.SettingsService.get().maxDutiesPerWeek)),
-      ]),
-    ]));
-
-    return col;
-  }
-
   /** Wunschpartner:innen: bis zu drei andere Sanis, mit denen man bevorzugt Dienst macht. */
   function buildWishCard(student) {
     const others = SSD.StudentService.getActiveByRole('student')
@@ -223,21 +135,15 @@ SSD.Views.StudentDashboard = (function () {
     ]);
   }
 
-  function infoRow(label, value) {
-    return U.el('div', { class: 'cluster', style: 'justify-content:space-between; font-size:var(--font-size-sm);' }, [
-      U.el('span', { class: 'text-tertiary' }, [label]),
-      U.el('strong', {}, [value]),
-    ]);
-  }
-
   let topbarCleanup = null;
   let offRemoteChanges = null;
-  let activeTab = 'start'; // 'start' | 'availability' | 'openDuties' | 'tasks' | 'events' | 'meetings' | 'materials' | 'teamLead'
+  let activeTab = 'start'; // 'start' | 'duties' | 'availability' | 'team'
+  let teamSection = 'meetings'; // Unterreiter von „Team“: 'meetings' | 'events' | 'tasks' | 'materials' | 'teamLead'
   let teamLeadSection = 'overview'; // Unterreiter der Team-Verwaltung: 'overview' | 'members' | 'engagement'
   let plan = null; // Auswahl im Dienstplan: { monday: Date, dayIso: string, todayIso: string } (siehe resetPlan)
   let onVisible = null;
   let tabBody = null;
-  let tabSwitcherEl = null;
+  let navEl = null;
   let topAreaEl = null;
 
   /**
@@ -252,17 +158,17 @@ SSD.Views.StudentDashboard = (function () {
     renderTabBody(student);
   }
 
-  /** Nur Hinweise und Tab-Leiste — der gerade bearbeitete Tab-Inhalt bleibt stehen. */
+  /** Nur Hinweise und Navigation — der gerade bearbeitete Inhalt bleibt stehen. */
   function refreshChrome(student) {
     if (topAreaEl) {
       const freshTop = buildTopArea(student);
       topAreaEl.replaceWith(freshTop);
       topAreaEl = freshTop;
     }
-    if (tabSwitcherEl) {
-      const freshTabs = buildTabSwitcher(student);
-      tabSwitcherEl.replaceWith(freshTabs);
-      tabSwitcherEl = freshTabs;
+    if (navEl) {
+      const freshNav = buildNav(student);
+      navEl.replaceWith(freshNav);
+      navEl = freshNav;
     }
   }
 
@@ -270,7 +176,7 @@ SSD.Views.StudentDashboard = (function () {
   function buildAvailabilityReminder(student) {
     const hasAny = SSD.StatisticsService.hasAnyAvailability(student);
     const goBtn = U.el('button', { class: 'btn btn--primary btn--sm' }, ['Zur Verfügbarkeit']);
-    goBtn.addEventListener('click', () => { activeTab = 'availability'; refreshAll(); });
+    goBtn.addEventListener('click', () => switchSection('availability'));
     const confirmBtn = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('check', { size: 14 }) }, [hasAny ? 'Ist aktuell' : 'Ich habe keine freien Zeiten']);
     confirmBtn.addEventListener('click', () => {
       SSD.StudentService.confirmAvailability(student.id);
@@ -292,8 +198,8 @@ SSD.Views.StudentDashboard = (function () {
   }
 
   /* ---------------------------------------------------------------------
-   * Schnell-Meldung "Ich falle aus" (z. B. morgens krank): direkt oben im
-   * Dashboard, ohne erst durch die Reiter zu suchen.
+   * Schnell-Meldung "Ich falle aus" (z. B. morgens krank): direkt auf der
+   * Startseite, ohne erst durch die Bereiche zu suchen.
    * ------------------------------------------------------------------- */
 
   const QUICK_DUTY_COUNT = 3;
@@ -483,7 +389,7 @@ SSD.Views.StudentDashboard = (function () {
     const okBtn = U.el('button', { class: 'btn btn--primary btn--sm', html: SSD.Icons.svg('check', { size: 14 }) }, ['Verstanden']);
     okBtn.addEventListener('click', () => {
       SSD.SelfServiceService.acknowledgeAutoSubstitutions(student.id);
-      SSD.Toast.success('Danke!', 'Die Dienste stehen unter „Meine nächsten Dienste“.');
+      SSD.Toast.success('Danke!', 'Die Dienste stehen unter „Meine Dienste“.');
       refreshAll();
     });
     const lines = unseen.map(({ entry, originalId }) => {
@@ -507,45 +413,104 @@ SSD.Views.StudentDashboard = (function () {
     ]);
   }
 
-  /** Karte "Meine nächsten Dienste" — mit Vertretungsanfrage je Dienst und "Ich falle aus …". */
-  function buildQuickDutiesCard(student) {
+  /** „Fr, 27.11. · 3./4. Stunde“ */
+  function slotWhen(dateIso, block) {
+    const date = U.parseIsoDate(dateIso);
+    return `${U.WEEKDAY_LABELS_SHORT[U.weekdayKeyFromDate(date)]}, ${U.formatDateShort(date)} · ${U.blockLabel(block)}`;
+  }
+
+  /** Kommende eigene Einsätze — Dienste und Verstärkungen, nach Zeit sortiert. */
+  function upcomingItems(student) {
+    const duties = SSD.SelfServiceService.getUpcomingDutiesOf(student.id).map((entry) => ({ type: 'duty', key: entry.date + entry.block, entry }));
+    const extra = SSD.ReinforcementService.upcomingFor(student.id).map(({ request }) => ({ type: 'reinforcement', key: request.date + request.block, request }));
+    return duties.concat(extra).sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  function dutyRow(student, duty, compact) {
     const S = SSD.SelfServiceService;
-    const duties = S.getUpcomingDutiesOf(student.id);
-    const covered = S.getCoveredDutiesOf(student.id);
-    if (!duties.length && !covered.length) return null;
-
-    const absenceBtn = duties.length ? U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('userAbsent', { size: 14 }) }, ['Ich falle aus …']) : null;
-    if (absenceBtn) absenceBtn.addEventListener('click', () => openAbsenceQuickDialog(student));
-
-    const rows = duties.slice(0, QUICK_DUTY_COUNT).map((duty) => {
-      const requested = S.hasOpenRequest(student.id, duty);
-      const viaLog = S.latestLogFor(duty, student.id);
-      const autoFor = viaLog && viaLog.auto ? viaLog.originalStudentId : null;
-      let action;
-      if (requested) {
-        action = U.el('button', { class: 'btn btn--ghost btn--sm', html: SSD.Icons.svg('x', { size: 13 }) }, ['Zurückziehen']);
-        action.addEventListener('click', () => withdrawSubstitutionFor(student, duty));
-      } else {
-        action = U.el('button', { class: 'btn btn--primary btn--sm', html: SSD.Icons.svg('handRaised', { size: 14 }) }, ['Vertretung anfordern']);
-        action.addEventListener('click', () => requestSubstitutionFor(student, duty));
-      }
-      const partners = partnerNames(duty, student.id);
-      return U.el('div', { class: 'quick-duty' }, [
-        U.el('div', { class: 'quick-duty__main' }, [
-          U.el('div', { class: 'cluster gap-2' }, [
-            urgencyBadge(duty.date),
-            U.el('strong', {}, [dutyWhen(duty)]),
-            requested ? U.el('span', { class: 'badge badge--warning' }, ['Vertretung gesucht']) : null,
-            autoFor ? U.el('span', { class: 'badge badge--primary' }, [`Vertretung für ${personName(autoFor)}`]) : null,
-          ]),
-          partners.length ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [`mit ${partners.join(' & ')}`]) : null,
+    const requested = S.hasOpenRequest(student.id, duty);
+    const viaLog = S.latestLogFor(duty, student.id);
+    const autoFor = viaLog && viaLog.auto ? viaLog.originalStudentId : null;
+    let action = null;
+    if (!compact && requested) {
+      action = U.el('button', { class: 'btn btn--ghost btn--sm', html: SSD.Icons.svg('x', { size: 13 }) }, ['Zurückziehen']);
+      action.addEventListener('click', () => withdrawSubstitutionFor(student, duty));
+    } else if (!compact) {
+      action = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('handRaised', { size: 14 }) }, ['Vertretung anfordern']);
+      action.addEventListener('click', () => requestSubstitutionFor(student, duty));
+    }
+    const partners = partnerNames(duty, student.id);
+    return U.el('div', { class: 'quick-duty' }, [
+      U.el('div', { class: 'quick-duty__main' }, [
+        U.el('div', { class: 'cluster gap-2' }, [
+          urgencyBadge(duty.date),
+          U.el('strong', {}, [dutyWhen(duty)]),
+          requested ? U.el('span', { class: 'badge badge--warning' }, ['Vertretung gesucht']) : null,
+          autoFor ? U.el('span', { class: 'badge badge--primary' }, [`Vertretung für ${personName(autoFor)}`]) : null,
         ]),
-        action,
-      ]);
-    });
+        partners.length ? U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [`mit ${partners.join(' & ')}`]) : null,
+      ]),
+      action,
+    ]);
+  }
 
-    // Abgegebene Dienste: Wer macht sie jetzt? (Beruhigung für die abgemeldete Person)
-    const coveredRows = covered.slice(0, QUICK_DUTY_COUNT).map(({ entry, replacementId }) => U.el('div', { class: 'quick-duty quick-duty--covered' }, [
+  function reinforcementRow(student, req, compact) {
+    let action = null;
+    if (!compact) {
+      action = U.el('button', { class: 'btn btn--ghost btn--sm', html: SSD.Icons.svg('x', { size: 13 }) }, ['Kann nicht']);
+      action.addEventListener('click', async () => {
+        const ok = await SSD.Dialog.confirm({
+          title: 'Kann nicht kommen', confirmLabel: 'Absagen',
+          message: `${req.requestedBy ? personName(req.requestedBy) : 'Die anfordernde Person'} sieht das und kann jemand anderen einteilen.`,
+        });
+        if (!ok) return;
+        try {
+          SSD.ReinforcementService.decline(req.id, student.id);
+          SSD.Toast.info('Abgesagt', 'Danke für die Rückmeldung.');
+        } catch (err) {
+          SSD.Toast.error('Nicht möglich', String(err.message || err));
+        }
+        refreshAll();
+      });
+    }
+    return U.el('div', { class: 'quick-duty' }, [
+      U.el('div', { class: 'quick-duty__main' }, [
+        U.el('div', { class: 'cluster gap-2' }, [
+          urgencyBadge(req.date),
+          U.el('strong', {}, [slotWhen(req.date, req.block)]),
+          U.el('span', { class: 'badge badge--primary', html: SSD.Icons.svg('team', { size: 11 }) }, ['Verstärkung']),
+        ]),
+        U.el('div', { class: 'text-tertiary', style: 'font-size:var(--font-size-xs);' }, [
+          [req.note, req.requestedBy ? `angefordert von ${personName(req.requestedBy)}` : null].filter(Boolean).join(' · '),
+        ]),
+      ]),
+      action,
+    ]);
+  }
+
+  /**
+   * „Meine nächsten Dienste“ — kompakt auf der Startseite (die nächsten drei,
+   * ohne Knöpfe), vollständig unter „Meine Dienste“ (je Dienst „Vertretung
+   * anfordern“, „Ich falle aus …“, abgegebene Dienste).
+   */
+  function buildMyDutiesCard(student, compact) {
+    const S = SSD.SelfServiceService;
+    const items = upcomingItems(student);
+    const covered = compact ? [] : S.getCoveredDutiesOf(student.id);
+    if (compact && !items.length) return null;
+    const shown = compact ? items.slice(0, QUICK_DUTY_COUNT) : items;
+    const rows = shown.map((item) => (item.type === 'duty' ? dutyRow(student, item.entry, compact) : reinforcementRow(student, item.request, compact)));
+
+    let headerAction = null;
+    if (compact) {
+      headerAction = U.el('button', { class: 'btn btn--ghost btn--sm', 'aria-label': 'Alle eigenen Dienste anzeigen' }, ['Alle']);
+      headerAction.addEventListener('click', () => switchSection('duties'));
+    } else if (S.getUpcomingDutiesOf(student.id).length) {
+      headerAction = U.el('button', { class: 'btn btn--secondary btn--sm', html: SSD.Icons.svg('userAbsent', { size: 14 }) }, ['Ich falle aus …']);
+      headerAction.addEventListener('click', () => openAbsenceQuickDialog(student));
+    }
+
+    const coveredRows = covered.map(({ entry, replacementId }) => U.el('div', { class: 'quick-duty quick-duty--covered' }, [
       U.el('div', { class: 'quick-duty__main' }, [
         U.el('div', { class: 'cluster gap-2' }, [
           urgencyBadge(entry.date),
@@ -555,31 +520,36 @@ SSD.Views.StudentDashboard = (function () {
       ]),
     ]));
 
-    const auto = S.isAutoSubstitutionEnabled();
-    const more = duties.length - QUICK_DUTY_COUNT;
+    const more = items.length - shown.length;
+    const summary = SSD.StudentService.getDutySummary(student.id);
     return U.el('section', { class: 'card', 'aria-label': 'Meine nächsten Dienste' }, [
       U.el('div', { class: 'card__header' }, [
         U.el('div', {}, [
           U.el('div', { class: 'card__title' }, ['Meine nächsten Dienste']),
-          U.el('div', { class: 'card__subtitle' }, [auto
-            ? 'Krank oder verhindert? Hier abmelden — die App teilt sofort eine verfügbare Vertretung ein.'
-            : 'Krank oder verhindert? Hier direkt eine Vertretung anfordern.']),
+          compact ? null : U.el('div', { class: 'card__subtitle' }, [S.isAutoSubstitutionEnabled()
+            ? 'Krank oder verhindert? Beim Dienst abmelden — die App teilt sofort eine verfügbare Vertretung ein.'
+            : 'Krank oder verhindert? Beim Dienst eine Vertretung anfordern.']),
         ]),
-        absenceBtn,
+        headerAction,
       ]),
       U.el('div', { class: 'card__body' }, [
         ...rows,
-        !duties.length ? U.el('p', { class: 'text-tertiary', style: 'margin:0 0 4px;' }, ['Aktuell keine weiteren Dienste.']) : null,
-        more > 0 ? U.el('p', { class: 'text-tertiary', style: 'margin:8px 0 0; font-size:var(--font-size-xs);' }, [`… und ${more} weitere unter „Meine Verfügbarkeit“.`]) : null,
+        !items.length ? U.el('p', { class: 'text-tertiary', style: 'margin:0 0 4px;' }, ['Aktuell keine Dienste geplant.']) : null,
+        more > 0 ? U.el('p', { class: 'text-tertiary', style: 'margin:8px 0 0; font-size:var(--font-size-xs);' }, [`… und ${more} weitere unter „Meine Dienste“.`]) : null,
         coveredRows.length ? U.el('div', { class: 'section-label', style: 'margin-top:14px;' }, ['Abgegeben']) : null,
         ...coveredRows,
+        compact ? null : U.el('p', { class: 'text-tertiary', style: 'margin:14px 0 0; font-size:var(--font-size-xs);' }, [
+          `Bisher ${summary.past.length === 1 ? '1 Dienst' : `${summary.past.length} Dienste`} geleistet, ${summary.upcoming.length} geplant.`,
+        ]),
       ]),
     ]);
   }
 
-  /** Bereich unter der Tab-Leiste, in jedem Reiter sichtbar: „Sie wurden als Vertretung eingeteilt“. */
+  /** Hinweise, die eine Reaktion brauchen — in jedem Bereich oben: als Vertretung bzw. als Verstärkung eingeteilt. */
   function buildTopArea(student) {
     const area = U.el('div', { class: 'stack gap-4' });
+    const reinforcementNotice = SSD.ReinforcementUI.buildAssignmentNotice(student, refreshAll);
+    if (reinforcementNotice) area.appendChild(reinforcementNotice);
     const autoNotice = buildAutoSubstitutionNotice(student);
     if (autoNotice) area.appendChild(autoNotice);
     if (!area.children.length) area.style.display = 'none';
@@ -640,11 +610,14 @@ SSD.Views.StudentDashboard = (function () {
     const weekday = U.weekdayKeyFromDate(U.parseIsoDate(dayIso));
     const perDuty = SSD.SettingsService.get().studentsPerDuty;
     const specialDay = SSD.CalendarService.getSpecialDayForDate(dayIso);
-    const blocks = specialDay ? [] : U.DUTY_BLOCKS.filter((b) => SSD.CalendarService.isBlockEnabled(weekday, b.key));
+    const extraFor = (key) => SSD.ReinforcementService.peopleForSlot(dayIso, key);
+    // Verstärkung kann auch außerhalb der regulären Dienstzeiten angefordert sein (z. B. Sportfest).
+    const blocks = U.DUTY_BLOCKS.filter((b) => (!specialDay && SSD.CalendarService.isBlockEnabled(weekday, b.key)) || extraFor(b.key).length);
 
     const rows = blocks.map((block) => {
       const entry = SSD.ScheduleTable.findEntry(dayIso, block.key);
-      const mine = isOwnDuty(entry, student.id);
+      const extra = extraFor(block.key);
+      const mine = isOwnDuty(entry, student.id) || extra.includes(student.id);
       const requests = entry ? SSD.SelfServiceService.activeRequestsOf(entry).map((r) => r.studentId) : [];
       const person = (id, azubi) => U.el('span', { class: `plan-person${id === student.id ? ' plan-person--me' : ''}` }, [
         id === student.id ? 'Sie' : personName(id),
@@ -655,8 +628,15 @@ SSD.Views.StudentDashboard = (function () {
       const free = Math.max(0, perDuty - ids.length);
       const people = ids.map((id) => person(id));
       if (entry && entry.azubiId) people.push(person(entry.azubiId, true));
-      if (!ids.length) people.push(U.el('span', { class: 'plan-person plan-person--free' }, ['noch niemand eingeteilt']));
-      else if (free) people.push(U.el('span', { class: 'plan-person plan-person--free' }, [free === 1 ? '1 Platz frei' : `${free} Plätze frei`]));
+      const regular = !specialDay && SSD.CalendarService.isBlockEnabled(weekday, block.key);
+      if (regular && !ids.length) people.push(U.el('span', { class: 'plan-person plan-person--free' }, ['noch niemand eingeteilt']));
+      else if (regular && free) people.push(U.el('span', { class: 'plan-person plan-person--free' }, [free === 1 ? '1 Platz frei' : `${free} Plätze frei`]));
+      if (extra.length) {
+        people.push(U.el('span', { class: 'plan-person plan-person--extra' }, [
+          U.el('span', { class: 'badge badge--primary plan-person__tag', html: SSD.Icons.svg('team', { size: 10 }) }, ['Verstärkung']),
+          extra.map((id) => (id === student.id ? 'Sie' : personName(id))).join(', '),
+        ]));
+      }
       return U.el('div', { class: `plan-row${mine ? ' plan-row--mine' : ''}` }, [
         U.el('div', { class: 'plan-row__block' }, [block.label]),
         U.el('div', { class: 'plan-row__people' }, people),
@@ -669,6 +649,7 @@ SSD.Views.StudentDashboard = (function () {
     return U.el('div', { class: `plan-day${dayIso === focusDayIso() ? ' is-focus' : ''}` }, [
       U.el('div', { class: 'plan-day__title' }, [planDayTitle(dayIso)]),
       todaySpecial ? U.el('p', { class: 'plan-day__note' }, [`Heute kein Dienst (${specialLabel(todaySpecial)}).`]) : null,
+      specialDay && rows.length ? U.el('p', { class: 'plan-day__note' }, [`Kein regulärer Dienst (${specialLabel(specialDay)}).`]) : null,
       rows.length
         ? U.el('div', {}, rows)
         : U.el('p', { class: 'plan-day__note' }, [specialDay ? `Kein Dienst (${specialLabel(specialDay)}).` : 'Kein Dienst an diesem Tag.']),
@@ -680,7 +661,8 @@ SSD.Views.StudentDashboard = (function () {
     const buttons = U.getWeekDates(plan.monday).map((date, i) => {
       const iso = U.toIsoDate(date);
       const selected = iso === plan.dayIso;
-      const own = SSD.Store.getState().schedule.entries.some((e) => e.date === iso && isOwnDuty(e, student.id));
+      const own = SSD.Store.getState().schedule.entries.some((e) => e.date === iso && isOwnDuty(e, student.id))
+        || SSD.ReinforcementService.upcomingFor(student.id).some((x) => x.request.date === iso);
       const btn = U.el('button', {
         type: 'button',
         'data-plan': `day${i}`,
@@ -747,47 +729,131 @@ SSD.Views.StudentDashboard = (function () {
     if (again) again.focus({ preventScroll: true });
   }
 
-  function buildStartTab(student) {
-    planCardEl = buildPlanCard(student);
-    const side = U.el('div', { class: 'stack gap-5' });
-    const quickDuties = buildQuickDutiesCard(student);
-    if (quickDuties) side.appendChild(quickDuties);
-    if (SSD.StudentService.needsAvailabilityReminder(student)) side.appendChild(buildAvailabilityReminder(student));
-    const board = SSD.AnnouncementBoard.render({ onChange: refreshAll });
-    if (board) side.appendChild(board);
-    if (!side.children.length) return planCardEl;
-    return U.el('div', { class: 'start-layout' }, [planCardEl, side]);
+  /** „Hinweis vom Administrator“ (persönlich, im Admin-Bereich bei der Person hinterlegt). */
+  function buildAdminMessage(student) {
+    if (!student.adminMessage) return null;
+    return U.el('div', { class: 'notice-box' }, [
+      U.el('span', { html: SSD.Icons.svg('bell', { size: 20 }) }),
+      U.el('div', {}, [U.el('strong', {}, ['Hinweis vom Administrator']), U.el('p', { class: 'pre-wrap' }, [student.adminMessage])]),
+    ]);
   }
 
-  function buildTabSwitcher(student) {
-    const openSeatCount = SSD.SelfServiceService.getOpenSeatsForPerson(student).length;
-    const tabDefs = [
-      { key: 'start', label: 'Dienstplan' },
-      { key: 'availability', label: 'Meine Verfügbarkeit' },
-      { key: 'openDuties', label: 'Offene Dienste', badge: openSeatCount || null },
-      { key: 'tasks', label: 'Aufgaben', badge: SSD.TasksService.getOpen().length || null },
+  /** Startseite: schnelle Aktionen, Plan, nächste Dienste, Pinnwand. */
+  function buildStartTab(student) {
+    planCardEl = buildPlanCard(student);
+
+    const helpBtn = U.el('button', { class: 'btn btn--primary start-action', html: SSD.Icons.svg('team', { size: 18 }) }, ['Verstärkung anfordern']);
+    helpBtn.addEventListener('click', () => SSD.ReinforcementUI.openRequestDialog({ onDone: refreshAll }));
+    const hasDuties = SSD.SelfServiceService.getUpcomingDutiesOf(student.id).length > 0;
+    const absentBtn = hasDuties ? U.el('button', { class: 'btn btn--secondary start-action', html: SSD.Icons.svg('userAbsent', { size: 18 }) }, ['Ich falle aus']) : null;
+    if (absentBtn) absentBtn.addEventListener('click', () => openAbsenceQuickDialog(student));
+    const top = U.el('div', { class: 'start-top stack gap-4' }, [
+      U.el('div', { class: `start-actions${absentBtn ? '' : ' start-actions--single'}` }, [helpBtn, absentBtn]),
+      ...SSD.ReinforcementService.requestsBy(student.id).map((req) => SSD.ReinforcementUI.buildRequestCard(req, refreshAll)),
+    ]);
+
+    const side = U.el('div', { class: 'start-side stack gap-5' }, [
+      buildAdminMessage(student),
+      buildMyDutiesCard(student, true),
+      SSD.StudentService.needsAvailabilityReminder(student) ? buildAvailabilityReminder(student) : null,
+      SSD.AnnouncementBoard.render({ onChange: refreshAll }),
+    ].filter(Boolean));
+    return U.el('div', { class: 'start-layout' }, [top, planCardEl, side]);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Navigation: vier Bereiche (Handy: Leiste unten, PC: Reiter oben)
+   * ------------------------------------------------------------------- */
+
+  const SECTIONS = [
+    { key: 'start', label: 'Dienstplan', short: 'Plan', icon: 'calendar' },
+    { key: 'duties', label: 'Meine Dienste', short: 'Meine Dienste', icon: 'clock' },
+    { key: 'availability', label: 'Verfügbarkeit', short: 'Verfügbar', icon: 'calendarCheck' },
+    { key: 'team', label: 'Team', short: 'Team', icon: 'team' },
+  ];
+
+  function teamSections(student) {
+    const list = [
+      { key: 'meetings', label: 'Teamtreffen', badge: SSD.MeetingsService.countUnanswered(student.id) },
       { key: 'events', label: 'Veranstaltungen' },
-      { key: 'meetings', label: 'Teamtreffen', badge: SSD.MeetingsService.countUnanswered(student.id) || null },
+      { key: 'tasks', label: 'Aufgaben', badge: SSD.TasksService.getOpen().length },
       { key: 'materials', label: 'Material' },
     ];
     if (SSD.StudentService.isTeamLead(student)) {
-      const pendingRequests = SSD.SelfServiceService.getOpenSeats().filter((s) => s.reason === 'requested').length;
-      const pendingRegistrations = SSD.StudentService.getPendingApprovalCount();
-      tabDefs.push({ key: 'teamLead', label: 'Team-Verwaltung', badge: (pendingRequests + pendingRegistrations) || null });
+      const pendingRequests = SSD.SelfServiceService.getOpenSeats().filter((seat) => seat.reason === 'requested').length;
+      list.push({ key: 'teamLead', label: 'Team-Verwaltung', badge: pendingRequests + SSD.StudentService.getPendingApprovalCount(), lead: true });
     }
-    const buttons = tabDefs.map((def) => {
-      const children = [def.label];
-      if (def.badge) children.push(U.el('span', { class: 'badge badge--warning', style: 'margin-left:6px;' }, [String(def.badge)]));
-      return U.el('button', { class: `tab${activeTab === def.key ? ' is-active' : ''}` }, children);
+    return list;
+  }
+
+  function switchSection(key) {
+    activeTab = key;
+    const student = SSD.Auth.getCurrentStudent();
+    if (!student) return;
+    refreshChrome(student);
+    renderTabBody(student);
+    window.scrollTo(0, 0);
+  }
+
+  function buildNav(student) {
+    const team = teamSections(student);
+    // Zahl am Bereich „Team“: was eine Antwort braucht (Teamtreffen, als Team-Leitung offene Anfragen)
+    const teamBadge = team.filter((t) => t.key === 'meetings' || t.lead).reduce((n, t) => n + (t.badge || 0), 0);
+    const marks = {
+      availability: SSD.StudentService.needsAvailabilityReminder(student) ? '!' : null,
+      team: teamBadge || null,
+    };
+    const items = SECTIONS.map((section) => {
+      const active = activeTab === section.key;
+      const btn = U.el('button', {
+        type: 'button', class: `dash-nav__item${active ? ' is-active' : ''}`, 'aria-current': active ? 'page' : null,
+      }, [
+        U.el('span', { class: 'dash-nav__icon', html: SSD.Icons.svg(section.icon, { size: 20 }) }),
+        U.el('span', { class: 'dash-nav__label dash-nav__label--long' }, [section.label]),
+        U.el('span', { class: 'dash-nav__label dash-nav__label--short' }, [section.short]),
+        marks[section.key] ? U.el('span', { class: 'dash-nav__badge' }, [String(marks[section.key])]) : null,
+      ]);
+      btn.addEventListener('click', () => switchSection(section.key));
+      return btn;
     });
-    buttons.forEach((btn, i) => {
-      btn.addEventListener('click', () => {
-        activeTab = tabDefs[i].key;
-        buttons.forEach((b, j) => b.classList.toggle('is-active', tabDefs[j].key === activeTab));
-        renderTabBody(student);
-      });
-    });
-    return U.el('div', { class: 'tabs' }, buttons);
+    return U.el('nav', { class: 'dash-nav', 'aria-label': 'Bereiche' }, items);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Bereiche „Meine Dienste“, „Verfügbarkeit“, „Team“
+   * ------------------------------------------------------------------- */
+
+  function buildDutiesSection(student) {
+    return U.el('div', { class: 'two-col-layout two-col-layout--even' }, [
+      buildMyDutiesCard(student, false),
+      buildOpenDutiesTab(student),
+    ]);
+  }
+
+  function buildAvailabilitySection(student) {
+    const main = U.el('div', { class: 'stack gap-5' }, [buildAvailabilityCard(student), buildExamsCard(student)]);
+    if ((student.role || 'student') !== 'student') return main;
+    return U.el('div', { class: 'two-col-layout' }, [main, U.el('div', { class: 'stack gap-5' }, [buildWishCard(student)])]);
+  }
+
+  function buildTeamSection(student) {
+    const sections = teamSections(student);
+    if (!sections.some((t) => t.key === teamSection)) teamSection = 'meetings';
+    const nav = U.el('div', { class: 'tabs tabs--sub tabs--wrap', role: 'tablist', 'aria-label': 'Team' }, sections.map((t) => {
+      const btn = U.el('button', { class: `tab${teamSection === t.key ? ' is-active' : ''}`, role: 'tab', 'aria-selected': teamSection === t.key ? 'true' : 'false' }, [
+        t.label,
+        t.badge ? U.el('span', { class: 'badge badge--warning', style: 'margin-left:6px;' }, [String(t.badge)]) : null,
+      ]);
+      btn.addEventListener('click', () => { teamSection = t.key; renderTabBody(student); });
+      return btn;
+    }));
+    let content;
+    if (teamSection === 'events') content = buildEventsTab(student);
+    else if (teamSection === 'tasks') content = buildTasksTab(student);
+    else if (teamSection === 'materials') content = buildMaterialsTab(student);
+    else if (teamSection === 'teamLead') content = buildTeamLeadTab(student);
+    else content = SSD.MeetingsPanel.render({ viewer: student, onChange: refreshAll });
+    return U.el('div', { class: 'stack gap-5' }, [nav, content]);
   }
 
   /** "Offene Dienste": unbesetzte Plätze oder Vertretungsanfragen, die eigenständig übernommen werden können. */
@@ -1255,44 +1321,10 @@ SSD.Views.StudentDashboard = (function () {
   function renderTabBody(student) {
     tabBody.innerHTML = '';
     planCardEl = null;
-    if (activeTab === 'teamLead' && !SSD.StudentService.isTeamLead(student)) activeTab = 'start';
-    if (activeTab === 'start') {
-      tabBody.appendChild(buildStartTab(student));
-      return;
-    }
-    if (activeTab === 'openDuties') {
-      tabBody.appendChild(buildOpenDutiesTab(student));
-      return;
-    }
-    if (activeTab === 'tasks') {
-      tabBody.appendChild(buildTasksTab(student));
-      return;
-    }
-    if (activeTab === 'events') {
-      tabBody.appendChild(buildEventsTab(student));
-      return;
-    }
-    if (activeTab === 'meetings') {
-      tabBody.appendChild(SSD.MeetingsPanel.render({ viewer: student, onChange: refreshAll }));
-      return;
-    }
-    if (activeTab === 'materials') {
-      tabBody.appendChild(buildMaterialsTab(student));
-      return;
-    }
-    if (activeTab === 'teamLead') {
-      tabBody.appendChild(buildTeamLeadTab(student));
-      return;
-    }
-    const summary = SSD.StudentService.getDutySummary(student.id);
-    const layout = U.el('div', { class: 'two-col-layout' });
-    layout.appendChild(U.el('div', { class: 'stack gap-5' }, [
-      buildAvailabilityCard(student),
-      buildExamsCard(student),
-      buildDutiesCard(student, summary),
-    ]));
-    layout.appendChild(buildSideColumn(student, summary));
-    tabBody.appendChild(layout);
+    if (activeTab === 'start') tabBody.appendChild(buildStartTab(student));
+    else if (activeTab === 'duties') tabBody.appendChild(buildDutiesSection(student));
+    else if (activeTab === 'team') tabBody.appendChild(buildTeamSection(student));
+    else tabBody.appendChild(buildAvailabilitySection(student));
   }
 
   function render(container) {
@@ -1301,6 +1333,7 @@ SSD.Views.StudentDashboard = (function () {
     // Wer noch gar nichts eingetragen hat und keinen Dienst hat, beginnt bei der Verfügbarkeit.
     const isNew = !SSD.StatisticsService.hasAnyAvailability(student) && !SSD.SelfServiceService.getUpcomingDutiesOf(student.id).length;
     activeTab = isNew ? 'availability' : 'start';
+    teamSection = 'meetings';
     teamLeadSection = 'overview';
     resetPlan();
 
@@ -1311,8 +1344,9 @@ SSD.Views.StudentDashboard = (function () {
     const viewContainer = U.el('div', { class: 'view-container' });
     const inner = U.el('div', { class: 'view-container__inner' });
 
-    tabSwitcherEl = buildTabSwitcher(student);
-    inner.appendChild(tabSwitcherEl);
+    navEl = buildNav(student);
+    inner.appendChild(navEl);
+    document.body.classList.add('has-dash-nav');
     topAreaEl = buildTopArea(student);
     inner.appendChild(topAreaEl);
     tabBody = U.el('div');
@@ -1329,7 +1363,8 @@ SSD.Views.StudentDashboard = (function () {
       if (!evt || !evt.remote) return;
       const fresh = SSD.Auth.getCurrentStudent();
       if (!fresh || !fresh.active) { SSD.Auth.logout(); return; }
-      if (activeTab === 'start' || (activeTab === 'teamLead' && !SSD.StudentService.isTeamLead(fresh))) renderTabBody(fresh);
+      // Startseite und „Meine Dienste“ enthalten keine Eingabefelder — sie dürfen sich sofort aktualisieren.
+      if (activeTab === 'start' || activeTab === 'duties' || (activeTab === 'team' && teamSection === 'teamLead' && !SSD.StudentService.isTeamLead(fresh))) renderTabBody(fresh);
       refreshChrome(fresh);
     });
 
@@ -1353,7 +1388,8 @@ SSD.Views.StudentDashboard = (function () {
     onVisible = null;
     planCardEl = null;
     topAreaEl = null;
-    tabSwitcherEl = null;
+    navEl = null;
+    document.body.classList.remove('has-dash-nav');
   }
 
   return { render, destroy };

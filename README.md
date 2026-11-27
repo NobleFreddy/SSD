@@ -198,24 +198,58 @@ gesucht — der Rest des Plans bleibt unangetastet.
   stattdessen die betroffene Woche vollständig neu berechnen zu lassen — das
   bleibt aber immer eine explizite, separate Aktion.
 
-### Startseite der Sanis: zuerst der Plan
+### Dashboard der Sanis
 
-Nach dem Öffnen steht der Reiter **„Dienstplan“** vorn: am PC der heutige Tag
-und die Wochentabelle, am Handy ein Tag als Liste mit fünf Tasten für Montag
-bis Freitag (ein Punkt markiert Tage mit eigenem Dienst). An Wochenenden und
-freien Tagen erscheint der nächste Diensttag. Daneben bzw. darunter folgen die
-eigenen nächsten Dienste, eine etwaige Verfügbarkeits-Erinnerung und die
-Pinnwand. Änderungen anderer erscheinen sofort; blieb die App über Nacht
-offen, springt sie beim Zurückkehren auf den heutigen Tag. Wer noch keine
-Verfügbarkeit eingetragen hat und keinen Dienst hat, beginnt bei „Meine
-Verfügbarkeit“.
+Vier Bereiche — am Handy als feste Leiste am unteren Rand, am PC als Reiter:
+
+- **Dienstplan** (Start): oben „Verstärkung anfordern“ und „Ich falle aus“,
+  dann der Plan — am PC der heutige Tag und die Wochentabelle, am Handy ein Tag
+  als Liste mit fünf Tasten für Montag bis Freitag (ein Punkt markiert Tage mit
+  eigenem Dienst). An Wochenenden und freien Tagen erscheint der nächste
+  Diensttag. Daneben bzw. darunter: die nächsten eigenen Dienste, ein Hinweis
+  der Administration, eine etwaige Verfügbarkeits-Erinnerung und die Pinnwand.
+- **Meine Dienste:** alle kommenden Dienste und Verstärkungen mit „Vertretung
+  anfordern“ bzw. „Kann nicht“, abgegebene Dienste und offene Dienste zum
+  Übernehmen.
+- **Verfügbarkeit:** Stundenplan, Klausuren, Wunschpartner:innen.
+- **Team:** Teamtreffen, Veranstaltungen, Aufgaben, Material und — für
+  Sanisprecher:innen — die Team-Verwaltung.
+
+Hinweise, die eine Reaktion brauchen (als Vertretung oder Verstärkung
+eingeteilt), stehen in jedem Bereich oben. Klasse, Abijahrgang und
+Bemerkungen stehen unter *Mein Konto*. Änderungen anderer erscheinen sofort;
+blieb die App über Nacht offen, springt sie beim Zurückkehren auf den heutigen
+Tag. Wer noch keine Verfügbarkeit eingetragen hat und keinen Dienst hat,
+beginnt bei „Verfügbarkeit“.
+
+### Verstärkung anfordern
+
+Jede:r Sani oder Azubi kann auf der Startseite Verstärkung anfordern: Tag
+(heute, die nächsten Werktage oder ein Datum bis 8 Wochen voraus) und Stunde
+wählen, optional Ort oder Hinweis, dann verfügbare Sanis selbst ankreuzen oder
+mit „1“, „2“, „3“ bzw. „Alle“ einteilen lassen. Infrage kommen nur **Sanis**
+(keine Azubis), die zu der Zeit „Verfügbar“ eingetragen haben — ohne Klausur,
+nicht schon im Dienst, nicht an dem Tag selbst ausgefallen und nicht schon als
+Verstärkung eingeteilt. Bei „Einteilen lassen“ stehen die vorn, die in der
+Woche am wenigsten Dienst und zuletzt am seltensten Verstärkung hatten.
+
+Die Eingeteilten sehen oben im Dashboard einen Hinweis („Verstanden“ /
+„Kann nicht“); im Plan stehen sie beim Block unter „Verstärkung“. Die
+anfordernde Person sieht, wer es gesehen hat und wer nicht kann, nimmt bei
+Bedarf jemanden heraus („Kommt nicht“), teilt weitere ein oder nimmt die
+Anfrage zurück. Teams meldet die Anfrage etwa **30 Sekunden** später (siehe
+[Teams-Benachrichtigungen](#teams-benachrichtigungen)); Änderungen in dieser
+Zeit fließen noch in dieselbe Meldung ein, eine sofort zurückgenommene Anfrage
+wird gar nicht gemeldet. Logik: [`js/modules/reinforcementService.js`](js/modules/reinforcementService.js),
+Oberfläche: [`js/ui/reinforcementUI.js`](js/ui/reinforcementUI.js).
+Gelöscht wird eine Anfrage 30 Tage nach dem Termin.
 
 ### Selbst abmelden („Ich falle aus“) mit automatischer Vertretung
 
 Wer z. B. morgens krank ist, meldet das direkt auf der eigenen Startseite
-(Reiter „Dienstplan“): Neben dem Plan, am Handy darunter, steht die Karte
-**„Meine nächsten Dienste“** (Heute/Morgen farbig markiert) mit **„Vertretung anfordern“** je Dienst sowie **„Ich falle aus …“**
-für mehrere Tage (Zeitraum wählen, alle betroffenen Dienste sind
+(Reiter „Dienstplan“) mit **„Ich falle aus“**, unter „Meine Dienste“ auch je
+Dienst mit **„Vertretung anfordern“** (Heute/Morgen farbig markiert). „Ich
+falle aus“ gilt für mehrere Tage (Zeitraum wählen, alle betroffenen Dienste sind
 vorausgewählt, ein Speichervorgang). Ein Grund wird bewusst nicht abgefragt
 (Gesundheitsdaten).
 
@@ -449,6 +483,9 @@ Internetverbindung zur gemeinsamen Supabase-Datenbank (siehe
 Kanal gepostet — etwa 5 Minuten nach der ersten Änderung, damit z. B. zehn
 nacheinander bearbeitete Dienste nicht zehn Nachrichten erzeugen. Gemeldet
 werden (einzeln abschaltbar unter *Einstellungen → Microsoft Teams*):
+Verstärkung (angefordert, geändert, zurückgenommen — ohne Sammel-Wartezeit
+etwa 30 Sekunden nach der Anfrage; ein `pg_cron`-Job `ssd-teams-urgent` prüft
+dafür alle 10 Sekunden, Migration `20261127_ssd_reinforcement.sql`),
 Dienstplan (neu erstellt/übertragen, Lücken aufgefüllt, manuelle Änderungen an
 kommenden Diensten), Vertretungen (eingetragen, automatisch eingeteilt,
 „Vertretung gesucht“, offene Dienste selbst übernommen), Teamtreffen (neue

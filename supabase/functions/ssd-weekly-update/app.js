@@ -868,6 +868,7 @@ export function createApp(initialData) {
         materials: [],
         announcements: [],
         meetings: [],
+        reinforcements: [], // „Verstärkung anfordern“, siehe SSD.ReinforcementService
         teamsOutbox: [], // { id, at, category, text, by } — wird serverseitig gesammelt an Teams gesendet
         meta: { createdAt: now, lastModifiedAt: now, setupComplete: false },
       };
@@ -1193,6 +1194,7 @@ export function createApp(initialData) {
         if (t.createdBy === undefined) t.createdBy = null; // ältere Aufgaben stammen alle vom Administrator
       });
       data.materials = data.materials || [];
+      if (!Array.isArray(data.reinforcements)) data.reinforcements = [];
       data.announcements = Array.isArray(data.announcements) ? data.announcements : [];
       data.meetings = Array.isArray(data.meetings) ? data.meetings : [];
       data.meetings.forEach((m) => {
@@ -1619,6 +1621,7 @@ export function createApp(initialData) {
         m.responses = (m.responses || []).filter((r) => r.personId !== id);
         m.attendeeIds = (m.attendeeIds || []).filter((pid) => pid !== id);
       });
+      if (SSD.ReinforcementService) SSD.ReinforcementService.removePersonFromDraft(draft, id);
     }
 
     function remove(id) {
@@ -1912,7 +1915,7 @@ export function createApp(initialData) {
    * ============================================================================
    * SSD.NotificationService — Meldungen für Microsoft Teams
    * ============================================================================
-   * Meldenswerte Änderungen (Dienstplan, Vertretungen, Teamtreffen,
+   * Meldenswerte Änderungen (Verstärkung, Dienstplan, Vertretungen, Teamtreffen,
    * Veranstaltungen, Aufgaben, Material) werden als lesbarer Text in `state.teamsOutbox`
    * abgelegt — immer innerhalb des Speichervorgangs der eigentlichen Änderung
    * (`add(draft, …)` im Commit-Mutator), damit kein zusätzlicher Save entsteht
@@ -1931,6 +1934,7 @@ export function createApp(initialData) {
     const MAX_OUTBOX = 100;
 
     const CATEGORIES = [
+      { key: 'reinforcement', label: 'Verstärkung', hint: 'Angeforderte Verstärkung mit den Eingeteilten — etwa 30 Sekunden nach der Anfrage, ohne die übliche Sammel-Wartezeit; Änderungen und Absagen danach einzeln.' },
       { key: 'schedule', label: 'Dienstplan', hint: 'Neu erstellt oder übertragen, Lücken aufgefüllt, manuelle Änderungen an kommenden Diensten.' },
       { key: 'substitution', label: 'Vertretungen', hint: 'Vertretungen eingetragen, „Vertretung gesucht“, offene Dienste selbst übernommen.' },
       { key: 'meeting', label: 'Teamtreffen', hint: 'Neue Treffen sowie Verlegungen und Absagen kommender Treffen (einzelne Zu-/Absagen nicht).' },
@@ -1984,15 +1988,18 @@ export function createApp(initialData) {
      * Legt eine Meldung ab — nur innerhalb eines `SSD.Store.commit`-Mutators
      * aufrufen. Ohne aktive Teams-Anbindung oder bei abgeschalteter Kategorie
      * passiert nichts.
+     * @param {{by?: string}} [opts] — Absender überschreiben (z. B. bei der automatischen Wochen-Aktualisierung)
+     * @returns {object|null} die abgelegte Meldung (z. B. um sie in der Wartezeit noch anzupassen)
      */
-    /** @param {{by?: string}} [opts] — Absender überschreiben (z. B. bei der automatischen Wochen-Aktualisierung) */
     function add(draft, category, text, opts) {
       const teams = draft.settings && draft.settings.teams;
-      if (!teams || !teams.enabled) return;
-      if (category !== 'test' && teams.categories && teams.categories[category] === false) return;
+      if (!teams || !teams.enabled) return null;
+      if (category !== 'test' && teams.categories && teams.categories[category] === false) return null;
       if (!Array.isArray(draft.teamsOutbox)) draft.teamsOutbox = [];
-      draft.teamsOutbox.push({ id: U.generateId('ntf'), at: new Date().toISOString(), category, text, by: (opts && opts.by) || actorName() });
+      const item = { id: U.generateId('ntf'), at: new Date().toISOString(), category, text, by: (opts && opts.by) || actorName() };
+      draft.teamsOutbox.push(item);
       if (draft.teamsOutbox.length > MAX_OUTBOX) draft.teamsOutbox.splice(0, draft.teamsOutbox.length - MAX_OUTBOX);
+      return item;
     }
 
     /** Wird eine Meldung dieser Kategorie derzeit an Teams gemeldet? (für Hinweise in der Oberfläche) */
@@ -2008,7 +2015,7 @@ export function createApp(initialData) {
       }, { trackHistory: false });
     }
 
-    return { CATEGORIES, add, isActive, sendTest, dutyLabel, names, personName, isUpcoming, withDetails };
+    return { CATEGORIES, add, isActive, sendTest, dutyLabel, names, personName, actorName, isUpcoming, withDetails };
   })();
 
   // ---- js/modules/calendarService.js ----

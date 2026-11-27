@@ -50,15 +50,21 @@ SSD.ScheduleTable = (function () {
         const enabled = SSD.CalendarService.isBlockEnabled(weekday, block.key);
         const specialDay = SSD.CalendarService.getSpecialDayForDate(dateIso);
 
+        const extra = SSD.ReinforcementService ? SSD.ReinforcementService.peopleForSlot(dateIso, block.key) : [];
+        const extraLine = extra.length ? U.el('div', {
+          class: 'duty-cell__extra', 'data-tooltip': `Verstärkung: ${extra.map((id) => SSD.SubstitutionService.studentName(id)).join(', ')}`,
+          html: SSD.Icons.svg('team', { size: 11 }),
+        }, [`+${extra.length} Verstärkung`]) : null;
+        const extraMine = !!options.highlightPersonId && extra.includes(options.highlightPersonId);
         if (!enabled || specialDay) {
           const label = specialDay ? SSD.Models.SPECIAL_DAY_TYPES.find((t) => t.key === specialDay.type).label : 'Kein Dienst';
-          td.appendChild(U.el('div', { class: 'duty-cell duty-cell--disabled' }, [U.el('div', { class: 'duty-cell__empty-label' }, [label])]));
+          td.appendChild(U.el('div', { class: `duty-cell duty-cell--disabled${extraMine ? ' duty-cell--mine' : ''}` }, [U.el('div', { class: 'duty-cell__empty-label' }, [label]), extraLine]));
         } else {
           const entry = findEntry(dateIso, block.key);
           const ids = entry ? entry.studentIds : [];
           const azubiId = entry ? entry.azubiId : null;
           const cls = SSD.Scheduler.classifyDuty(ids, settings.studentsPerDuty);
-          const isMine = options.highlightPersonId && (ids.includes(options.highlightPersonId) || azubiId === options.highlightPersonId);
+          const isMine = options.highlightPersonId && (ids.includes(options.highlightPersonId) || azubiId === options.highlightPersonId || extraMine);
 
           const cellAttrs = {
             class: `duty-cell duty-cell--${cls}${isMine ? ' duty-cell--mine' : ''}`,
@@ -111,6 +117,7 @@ SSD.ScheduleTable = (function () {
             ]));
           }
 
+          if (extraLine) cell.appendChild(extraLine);
           if (interactive) {
             const openEditor = () => options.onCellClick(dateIso, weekday, block.key);
             cell.addEventListener('click', openEditor);

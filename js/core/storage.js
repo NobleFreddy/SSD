@@ -287,6 +287,7 @@ SSD.Storage = (function () {
       if (t.createdBy === undefined) t.createdBy = null; // ältere Aufgaben stammen alle vom Administrator
     });
     data.materials = data.materials || [];
+    if (!Array.isArray(data.reinforcements)) data.reinforcements = [];
     data.announcements = Array.isArray(data.announcements) ? data.announcements : [];
     data.meetings = Array.isArray(data.meetings) ? data.meetings : [];
     data.meetings.forEach((m) => {

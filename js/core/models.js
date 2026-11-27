@@ -416,6 +416,7 @@ SSD.Models = (function () {
       materials: [],
       announcements: [],
       meetings: [],
+      reinforcements: [], // „Verstärkung anfordern“, siehe SSD.ReinforcementService
       teamsOutbox: [], // { id, at, category, text, by } — wird serverseitig gesammelt an Teams gesendet
       meta: { createdAt: now, lastModifiedAt: now, setupComplete: false },
     };

@@ -15,7 +15,7 @@ SSD.Views.Privacy = (function () {
   'use strict';
 
   const U = SSD.Utils;
-  const LAST_CHANGED = '25.11.2026';
+  const LAST_CHANGED = '27.11.2026';
   const MISSING = '[noch nicht angegeben — bitte bei der Schule erfragen]';
 
   function section(title, children) {
@@ -88,7 +88,7 @@ SSD.Views.Privacy = (function () {
           'Name, Benutzername, Klasse, Abiturjahrgang, Kategorie (Sani/Azubi) und gegebenenfalls Funktion (Sanisprecher:in)',
           'Geschlecht — freiwillig, nur für die Bildung gemischter Teams',
           'Verfügbarkeiten (Standardwoche und einzelne Wochen im Voraus), Klausuren und feste Termine (Zeitraum; den Titel sehen nur Sie und die Administration), Wunschpartner:innen, Dienste und bisheriger Dienstverlauf',
-          'Abmeldungen und Vertretungen (ohne Angabe von Gründen), Zu- und Absagen sowie Anwesenheit bei Teamtreffen, Anmeldungen zu Veranstaltungen, erledigte Aufgaben, Materialanfragen',
+          'Abmeldungen und Vertretungen (ohne Angabe von Gründen), angeforderte Verstärkung (wer wann eingeteilt wurde, ob gesehen oder abgesagt), Zu- und Absagen sowie Anwesenheit bei Teamtreffen, Anmeldungen zu Veranstaltungen, erledigte Aufgaben, Materialanfragen',
           'Bemerkungen und Hinweise der Administration zur Person',
           'Anmeldedaten: Das Passwort wird nur als nicht umkehrbarer Hash (bcrypt) auf dem Server gespeichert.',
           'Ein Protokoll der Anmeldungen und Speichervorgänge (wer, wann) zum Schutz vor Missbrauch',
@@ -100,7 +100,7 @@ SSD.Views.Privacy = (function () {
         list([
           'Die Administration (betreuende Lehrkraft) sieht und verwaltet alle Daten.',
           'Sanisprecher:innen koordinieren das Team: Sie schalten Registrierungen frei, erinnern an fehlende Verfügbarkeiten und sehen, sofern die Schule das vorsieht, die Engagement-Übersicht.',
-          'Alle Sanis und Azubis sehen den Dienstplan mit den Namen der eingeteilten Personen, Teamtreffen, Veranstaltungen und Aufgaben. Bemerkungen und persönliche Hinweise sehen nur die betroffene Person und die Administration.',
+          'Alle Sanis und Azubis sehen den Dienstplan mit den Namen der eingeteilten Personen (auch als Verstärkung), Teamtreffen, Veranstaltungen und Aufgaben. Wer Verstärkung anfordert, sieht, welche Sanis zu der Zeit als verfügbar eingetragen sind. Bemerkungen und persönliche Hinweise sehen nur die betroffene Person und die Administration.',
           'Was jemand sehen und ändern darf, prüft der Server bei jedem Zugriff. Ohne Anmeldung sind keine personenbezogenen Daten abrufbar.',
         ]),
       ]),
@@ -110,7 +110,7 @@ SSD.Views.Privacy = (function () {
           'Supabase Inc. (USA) betreibt die Datenbank in einem Rechenzentrum in Frankfurt am Main.',
           'GitHub Inc. (USA) liefert die Webseite aus und speichert dabei aus Sicherheitsgründen die IP-Adressen der Aufrufe.',
           info.teamsEnabled
-            ? 'Microsoft Teams: Änderungen am Dienstplan, Vertretungen und Teamtreffen werden mit Vornamen und Initial (oder Namen) und Dienstzeiten in einen Teams-Kanal des Sanitätsdienstes gemeldet — nie mit Abwesenheitsgründen. Erinnerungen an Veranstaltungen nennen nur Titel, Zeit, Ort und die Anzahl der Anmeldungen.'
+            ? 'Microsoft Teams: Änderungen am Dienstplan, Vertretungen und Teamtreffen werden mit Vornamen und Initial (oder Namen) und Dienstzeiten in einen Teams-Kanal des Sanitätsdienstes gemeldet — nie mit Abwesenheitsgründen. Erinnerungen an Veranstaltungen nennen nur Titel, Zeit, Ort und die Anzahl der Anmeldungen. Angeforderte Verstärkung wird mit Zeit, Ort oder Hinweis und den Namen der Eingeteilten gemeldet.'
             : null,
         ].filter(Boolean)),
         p('Für Übermittlungen in die USA gelten Standardvertragsklauseln der EU-Kommission bzw. das EU-US Data Privacy Framework. Eine Weitergabe an andere Stellen findet nicht statt.'),
@@ -120,7 +120,7 @@ SSD.Views.Privacy = (function () {
         list([
           'Konten bis zum Ausscheiden aus dem Schulsanitätsdienst; danach löscht die Administration das Konto.',
           `Dienste, Dienstverlauf, Teamtreffen, Veranstaltungen, erledigte Aufgaben und Materialanfragen eines Schuljahres: ${grace ? `${grace} Monat${grace === 1 ? '' : 'e'} nach Schuljahresende` : 'zum Schuljahresende'}.`,
-          'Abgelaufene Pinnwand-Beiträge, nie freigeschaltete Registrierungen und Teams-Meldungen: 30 Tage; vergangene Wochen-Verfügbarkeiten und Klausuren 30 Tage nach ihrem Ende.',
+          'Abgelaufene Pinnwand-Beiträge, nie freigeschaltete Registrierungen und Teams-Meldungen: 30 Tage; vergangene Wochen-Verfügbarkeiten und Klausuren 30 Tage nach ihrem Ende; angeforderte Verstärkung 30 Tage nach dem Termin.',
           'Anmeldungen enden spätestens nach 12 Stunden. Haben Sie „Auf diesem Gerät angemeldet bleiben“ gewählt, enden sie, wenn sie 60 Tage nicht genutzt wurden, spätestens nach einem Jahr — oder sofort, wenn Sie sich abmelden oder das Gerät unter „Mein Konto“ abmelden. Für die Administration gilt das nicht. Das Zugriffsprotokoll wird nach 90 Tagen, Anmeldeversuche nach einem Tag gelöscht.',
         ]),
       ]),

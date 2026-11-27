@@ -621,6 +621,7 @@ SSD.Views.AdminSettings = (function () {
       [expired.scheduleEntries.length, 'Dienste'], [expired.dutyLogEntries, 'Einträge im Dienstverlauf'], [expired.meetings.length, 'Teamtreffen'],
       [expired.events.length, 'Veranstaltungen'], [expired.tasks.length, 'erledigte Aufgaben'], [expired.materials.length, 'erledigte Materialanfragen'],
       [expired.announcements.length, 'Pinnwand-Beiträge'], [expired.pendingRegistrations.length, 'nie freigeschaltete Registrierungen'], [expired.teamsOutbox, 'Teams-Meldungen'],
+      [expired.reinforcements.length, 'Verstärkungsanfragen'],
     ].filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`);
     const applyBtn = U.el('button', { class: 'btn btn--secondary', html: SSD.Icons.svg('trash', { size: 15 }), disabled: !expired.total }, ['Jetzt löschen']);
     applyBtn.addEventListener('click', async () => {

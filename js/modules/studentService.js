@@ -126,6 +126,7 @@ SSD.StudentService = (function () {
       m.responses = (m.responses || []).filter((r) => r.personId !== id);
       m.attendeeIds = (m.attendeeIds || []).filter((pid) => pid !== id);
     });
+    if (SSD.ReinforcementService) SSD.ReinforcementService.removePersonFromDraft(draft, id);
   }
 
   function remove(id) {
